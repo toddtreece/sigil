@@ -1,0 +1,42 @@
+# mise
+.mise.local.toml
+
+# dependencies
+node_modules/
+.pnpm-store/
+
+# logs
+logs/
+*.log
+
+# build output
+dist/
+coverage/
+.storybook-static/
+*.tsbuildinfo
+
+# plugin and go artifacts
+apps/plugin/dist/
+apps/plugin/pkg/
+api/tmp/
+api/sigil-api
+*.db
+
+# docker and local env
+.env
+.env.*
+!*.example
+
+# e2e outputs
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# editor/OS
+.DS_Store
+.idea/
+.vscode/
+.eslintcache
+.turbo/

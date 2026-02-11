@@ -1,0 +1,18 @@
+{
+  "name": "sigil",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": "==22"
+  },
+  "scripts": {
+    "build": "pnpm --filter @grafana/sigil-plugin run build",
+    "dev": "pnpm --filter @grafana/sigil-plugin run dev",
+    "test": "pnpm --filter @grafana/sigil-plugin run test:ci",
+    "typecheck": "pnpm --filter @grafana/sigil-plugin run typecheck",
+    "lint": "pnpm --filter @grafana/sigil-plugin run lint",
+    "up": "docker compose --profile core up --build",
+    "down": "docker compose down"
+  }
+}

@@ -1,0 +1,17 @@
+FROM node:22-bookworm
+
+ENV GOPATH /opt/go
+ENV PATH $PATH:$GOPATH/bin:/usr/local/go/bin
+ENV GOCACHE /opt/go-cache/build
+ENV GOMODCACHE /opt/go-cache/mod
+ENV GOFLAGS="-buildvcs=false"
+
+COPY --from=golang:1.25-bookworm /usr/local/go/ /usr/local/go/
+RUN /usr/local/go/bin/go install github.com/magefile/mage@v1.15.0
+
+COPY package.json /tmp/package.json
+RUN corepack enable && cd /tmp && corepack install
+RUN pnpm config set store-dir /opt/pnpm-store
+
+EXPOSE 35728
+EXPOSE 35729

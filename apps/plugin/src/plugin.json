@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "app",
+  "name": "Sigil",
+  "id": "grafana-sigil-app",
+  "backend": true,
+  "executable": "gpx_sigil_app",
+  "info": {
+    "keywords": ["app", "ai", "observability", "genai"],
+    "description": "Observe what happened after you cast a prompt spell.",
+    "author": {
+      "name": "Grafana"
+    },
+    "logos": {
+      "small": "img/logo.png",
+      "large": "img/logo.png"
+    },
+    "screenshots": [],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "includes": [
+    {
+      "type": "page",
+      "name": "Conversations",
+      "path": "/a/grafana-sigil-app/conversations",
+      "addToNav": true,
+      "defaultNav": true
+    },
+    {
+      "type": "page",
+      "name": "Completions",
+      "path": "/a/grafana-sigil-app/completions",
+      "addToNav": true,
+      "defaultNav": false
+    },
+    {
+      "type": "page",
+      "name": "Traces",
+      "path": "/a/grafana-sigil-app/traces",
+      "addToNav": true,
+      "defaultNav": false
+    },
+    {
+      "type": "page",
+      "name": "Settings",
+      "path": "/a/grafana-sigil-app/settings",
+      "addToNav": true,
+      "defaultNav": false
+    },
+    {
+      "type": "page",
+      "icon": "cog",
+      "name": "Configuration",
+      "path": "/plugins/grafana-sigil-app",
+      "role": "Admin",
+      "addToNav": true
+    }
+  ],
+  "dependencies": {
+    "grafanaDependency": ">=12.0.0-0",
+    "plugins": []
+  }
+}

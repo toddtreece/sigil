@@ -1,0 +1,102 @@
+[settings]
+experimental = true
+
+[tools]
+node = "22"
+go = "1.25.6"
+"go:github.com/magefile/mage" = "v1.15.0"
+"go:github.com/air-verse/air" = "v1.62.0"
+
+[tasks.help]
+description = "Show available tasks"
+run = "mise tasks"
+
+[tasks.deps]
+description = "Install workspace dependencies"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+corepack enable pnpm
+pnpm install
+"""
+
+[tasks."dev:plugin"]
+description = "Run plugin webpack watch"
+dir = "apps/plugin"
+run = "pnpm run dev"
+
+[tasks."dev:api"]
+description = "Run Sigil API with air"
+dir = "api"
+run = "air -c .air.toml"
+
+[tasks.up]
+description = "Start local stack (grafana, plugin, api, tempo, mysql)"
+run = "docker compose --profile core up --build"
+
+[tasks."up:object"]
+description = "Start local stack with optional object storage profile"
+run = "docker compose --profile core --profile object up --build"
+
+[tasks.down]
+description = "Stop local stack"
+run = "docker compose down"
+
+[tasks.logs]
+description = "Tail local stack logs"
+run = "docker compose logs -f"
+
+[tasks.test]
+description = "Run plugin, API, and Go SDK tests"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+pnpm --filter @grafana/sigil-plugin run test:ci
+cd api && go test ./...
+cd ../apps/plugin && go test ./...
+mise run test:go:sdk-core
+mise run test:go:sdk-anthropic
+mise run test:go:sdk-openai
+mise run test:go:sdk-gemini
+"""
+
+[tasks."test:go:sdk-core"]
+description = "Run Go SDK core tests as standalone module"
+dir = "sdks/go"
+run = "GOWORK=off go test ./..."
+
+[tasks."test:go:sdk-anthropic"]
+description = "Run Anthropic provider helper tests as standalone module"
+dir = "sdks/go-providers/anthropic"
+run = "GOWORK=off go test ./..."
+
+[tasks."test:go:sdk-openai"]
+description = "Run OpenAI provider helper tests as standalone module"
+dir = "sdks/go-providers/openai"
+run = "GOWORK=off go test ./..."
+
+[tasks."test:go:sdk-gemini"]
+description = "Run Gemini provider helper tests as standalone module"
+dir = "sdks/go-providers/gemini"
+run = "GOWORK=off go test ./..."
+
+[tasks."test:go:all-modules"]
+description = "Run go test across Go SDK modules"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+while IFS= read -r moddir; do
+  echo "==> go test ${moddir}"
+  (cd "${moddir}" && go test ./...)
+done < <(find ./sdks -name go.mod -exec dirname {} \\; | sort)
+"""
+
+[tasks.check]
+description = "Run lint, typecheck and tests"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+pnpm --filter @grafana/sigil-plugin run lint
+pnpm --filter @grafana/sigil-plugin run typecheck
+mise run test
+"""
