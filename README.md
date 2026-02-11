@@ -1,6 +1,8 @@
 # Grafana Sigil
 
-<img src="./logo.png" alt="Grafana Sigil logo" width="280" />
+<p align="center">
+  <img src="./logo.png" alt="Grafana Sigil logo" width="280" />
+</p>
 
 Sigil is an OSS AI Observability project from Grafana.
 
