@@ -1,8 +1,8 @@
 # Grafana Sigil
 
-![Grafana Sigil logo](./logo.png)
+<img src="./logo.png" alt="Grafana Sigil logo" width="280" />
 
-Sigil is an OSS AI observability project from Grafana.
+Sigil is an OSS AI Observability project from Grafana.
 
 Prompt-as-spell metaphor: you cast a sigil, then observe what happened.
 
