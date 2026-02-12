@@ -1,12 +1,14 @@
 # Sigil API
 
-Bootstrap contracts exposed by the service:
+Active contracts exposed by the service:
 
-- OTLP gRPC: `:4317`
+- OTLP gRPC traces:
+  - `opentelemetry.proto.collector.trace.v1.TraceService/Export`
 - OTLP HTTP traces: `:4318/v1/traces`
-- Records API:
-  - `POST /api/v1/records`
-  - `GET /api/v1/records/{record_id}`
+- Generation ingest gRPC:
+  - `sigil.v1.GenerationIngestService.ExportGenerations`
+- Generation ingest HTTP parity:
+  - `POST /api/v1/generations:export`
 - Query API:
   - `GET /api/v1/conversations`
   - `GET /api/v1/conversations/{conversation_id}`

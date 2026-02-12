@@ -5,14 +5,13 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/grafana/sigil/api/internal/generations"
 	"github.com/grafana/sigil/api/internal/query"
-	"github.com/grafana/sigil/api/internal/records"
 )
 
-func RegisterRoutes(mux *http.ServeMux, querySvc *query.Service, recordsSvc *records.Service) {
+func RegisterRoutes(mux *http.ServeMux, querySvc *query.Service, generationsSvc *generations.Service) {
 	mux.HandleFunc("/healthz", health)
-	mux.HandleFunc("/api/v1/records", createRecord(recordsSvc))
-	mux.HandleFunc("/api/v1/records/", getRecord(recordsSvc))
+	mux.HandleFunc("/api/v1/generations:export", generations.NewHTTPHandler(generationsSvc))
 	mux.HandleFunc("/api/v1/conversations", listConversations(querySvc))
 	mux.HandleFunc("/api/v1/conversations/", getConversation(querySvc))
 	mux.HandleFunc("/api/v1/completions", listCompletions(querySvc))
@@ -21,47 +20,6 @@ func RegisterRoutes(mux *http.ServeMux, querySvc *query.Service, recordsSvc *rec
 
 func health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-func createRecord(recordsSvc *records.Service) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		var body records.CreateRecordRequest
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		record, err := recordsSvc.Create(req.Context(), body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		writeJSON(w, http.StatusCreated, record)
-	}
-}
-
-func getRecord(recordsSvc *records.Service) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		id := strings.TrimPrefix(req.URL.Path, "/api/v1/records/")
-		record, err := recordsSvc.Get(req.Context(), id)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-
-		writeJSON(w, http.StatusOK, record)
-	}
 }
 
 func listConversations(querySvc *query.Service) http.HandlerFunc {

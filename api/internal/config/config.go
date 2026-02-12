@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"strconv"
 )
 
 type Config struct {
@@ -14,7 +13,6 @@ type Config struct {
 	MySQLDSN            string
 	ObjectStoreEndpoint string
 	ObjectStoreBucket   string
-	PayloadMaxBytes     int
 }
 
 func FromEnv() Config {
@@ -27,7 +25,6 @@ func FromEnv() Config {
 		MySQLDSN:            getEnv("SIGIL_MYSQL_DSN", "sigil:sigil@tcp(mysql:3306)/sigil?parseTime=true"),
 		ObjectStoreEndpoint: getEnv("SIGIL_OBJECT_STORE_ENDPOINT", "http://minio:9000"),
 		ObjectStoreBucket:   getEnv("SIGIL_OBJECT_STORE_BUCKET", "sigil"),
-		PayloadMaxBytes:     getEnvInt("SIGIL_PAYLOAD_MAX_BYTES", 8192),
 	}
 }
 
@@ -36,16 +33,4 @@ func getEnv(key string, defaultValue string) string {
 		return value
 	}
 	return defaultValue
-}
-
-func getEnvInt(key string, defaultValue int) int {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return defaultValue
-	}
-	return parsed
 }

@@ -27,13 +27,15 @@ Prompt-as-spell metaphor: you cast a sigil, then observe what happened.
 - `/sdks/go`: Go SDK bootstrap.
 - `/sdks/python`: Python SDK skeleton.
 - `/sdks/js`: JS SDK skeleton.
-- `/docs`: architecture, vibe, and backlog docs.
+- `/ARCHITECTURE.md`: canonical system architecture and contracts.
+- `/docs/index.md`: canonical documentation catalog.
 
 ## Quickstart
 
 ```bash
 mise trust
 mise install
+mise run doctor:go
 mise run deps
 mise run up
 ```
@@ -45,6 +47,18 @@ To run with optional MinIO profile:
 ```bash
 mise run up:object
 ```
+
+## Toolchain Guardrails
+
+The repository is pinned to Go `1.25.6` in `go.work` and all Go modules.
+
+Run this after installing tools, or when your editor reports workspace load errors:
+
+```bash
+mise run doctor:go
+```
+
+If it reports a mismatch, apply the fix it prints (`go env -w GOTOOLCHAIN=go1.25.6+auto`) and restart your editor.
 
 ## Current Scope
 

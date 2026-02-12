@@ -1,11 +1,15 @@
 [settings]
 experimental = true
 
+[env]
+GOTOOLCHAIN = "go1.25.6+auto"
+
 [tools]
 node = "22"
 go = "1.25.6"
 "go:github.com/magefile/mage" = "v1.15.0"
 "go:github.com/air-verse/air" = "v1.62.0"
+"go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "v2.8.0"
 
 [tasks.help]
 description = "Show available tasks"
@@ -18,6 +22,33 @@ run = """
 set -euo pipefail
 corepack enable pnpm
 pnpm install
+"""
+
+[tasks."doctor:go"]
+description = "Verify Go toolchain matches workspace requirements"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+required_go_version="go1.25.6"
+required_go_work_version="1.25.6"
+
+actual_go_version="$(go env GOVERSION)"
+if [[ "${actual_go_version}" != "${required_go_version}" ]]; then
+  cat <<EOF
+Go toolchain mismatch: expected ${required_go_version}, got ${actual_go_version}.
+Run:
+  mise install
+  go env -w GOTOOLCHAIN=${required_go_version}+auto
+EOF
+  exit 1
+fi
+
+go_work_version="$(awk '$1 == "go" { print $2; exit }' go.work)"
+if [[ "${go_work_version}" != "${required_go_work_version}" ]]; then
+  echo "go.work mismatch: expected go ${required_go_work_version}, got ${go_work_version}"
+  exit 1
+fi
 """
 
 [tasks."dev:plugin"]
@@ -46,14 +77,60 @@ run = "docker compose down"
 description = "Tail local stack logs"
 run = "docker compose logs -f"
 
+[tasks.format]
+description = "Format Go and TypeScript code"
+alias = "fmt"
+depends = ["format:go", "format:ts"]
+
+[tasks."format:go"]
+description = "Format Go code in all modules"
+depends = ["doctor:go"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+while IFS= read -r moddir; do
+  echo "==> go fmt ${moddir}"
+  (cd "${moddir}" && GOWORK=off go fmt ./...)
+done < <(find . -name go.mod -not -path './node_modules/*' -exec dirname {} \\; | sort)
+"""
+
+[tasks."format:ts"]
+description = "Apply TypeScript lint fixes and formatting"
+run = "pnpm --filter @grafana/sigil-plugin run lint:fix"
+
+[tasks.lint]
+description = "Run Go and TypeScript linting"
+depends = ["lint:go", "lint:ts"]
+
+[tasks."lint:go"]
+description = "Lint Go code in all modules"
+depends = ["doctor:go"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+while IFS= read -r moddir; do
+  echo "==> golangci-lint ${moddir}"
+  (cd "${moddir}" && GOWORK=off golangci-lint run ./...)
+done < <(find . -name go.mod -not -path './node_modules/*' -exec dirname {} \\; | sort)
+"""
+
+[tasks."lint:ts"]
+description = "Lint TypeScript plugin code"
+run = "pnpm --filter @grafana/sigil-plugin run lint"
+
+[tasks.typecheck]
+description = "Run TypeScript type checks"
+run = "pnpm --filter @grafana/sigil-plugin run typecheck"
+
 [tasks.test]
 description = "Run plugin, API, and Go SDK tests"
+depends = ["doctor:go"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
 pnpm --filter @grafana/sigil-plugin run test:ci
-cd api && go test ./...
-cd ../apps/plugin && go test ./...
+cd api && GOWORK=off go test ./...
+cd ../apps/plugin && GOWORK=off go test ./...
 mise run test:go:sdk-core
 mise run test:go:sdk-anthropic
 mise run test:go:sdk-openai
@@ -63,25 +140,30 @@ mise run test:go:sdk-gemini
 [tasks."test:go:sdk-core"]
 description = "Run Go SDK core tests as standalone module"
 dir = "sdks/go"
+depends = ["doctor:go"]
 run = "GOWORK=off go test ./..."
 
 [tasks."test:go:sdk-anthropic"]
 description = "Run Anthropic provider helper tests as standalone module"
 dir = "sdks/go-providers/anthropic"
+depends = ["doctor:go"]
 run = "GOWORK=off go test ./..."
 
 [tasks."test:go:sdk-openai"]
 description = "Run OpenAI provider helper tests as standalone module"
 dir = "sdks/go-providers/openai"
+depends = ["doctor:go"]
 run = "GOWORK=off go test ./..."
 
 [tasks."test:go:sdk-gemini"]
 description = "Run Gemini provider helper tests as standalone module"
 dir = "sdks/go-providers/gemini"
+depends = ["doctor:go"]
 run = "GOWORK=off go test ./..."
 
 [tasks."test:go:all-modules"]
 description = "Run go test across Go SDK modules"
+depends = ["doctor:go"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -93,10 +175,4 @@ done < <(find ./sdks -name go.mod -exec dirname {} \\; | sort)
 
 [tasks.check]
 description = "Run lint, typecheck and tests"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-pnpm --filter @grafana/sigil-plugin run lint
-pnpm --filter @grafana/sigil-plugin run typecheck
-mise run test
-"""
+depends = ["lint", "typecheck", "test"]

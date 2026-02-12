@@ -16,8 +16,8 @@ type Completion struct {
 }
 
 type Trace struct {
-	ID        string   `json:"id"`
-	RecordIDs []string `json:"recordIds"`
+	ID            string   `json:"id"`
+	GenerationIDs []string `json:"generationIds"`
 }
 
 type Service struct{}
@@ -52,5 +52,5 @@ func (s *Service) ListCompletions() []Completion {
 }
 
 func (s *Service) GetTrace(id string) Trace {
-	return Trace{ID: id, RecordIDs: []string{"r-1"}}
+	return Trace{ID: id, GenerationIDs: []string{"gen-bootstrap"}}
 }

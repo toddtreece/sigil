@@ -6,29 +6,20 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/grafana/sigil/api/internal/records"
 	"github.com/grafana/sigil/api/internal/tempo"
 )
 
 type Service struct {
-	recordsStore    *records.Service
-	tempoClient     *tempo.Client
-	payloadMaxBytes int
+	tempoClient *tempo.Client
 }
 
 type ingestResponse struct {
-	Status              string         `json:"status"`
-	PayloadExternalized bool           `json:"payloadExternalized"`
-	RecordIDs           []string       `json:"recordIds,omitempty"`
-	PayloadRef          string         `json:"payloadRef,omitempty"`
-	SpanAttributes      map[string]any `json:"spanAttributes,omitempty"`
+	Status string `json:"status"`
 }
 
-func NewService(recordsStore *records.Service, tempoClient *tempo.Client, payloadMaxBytes int) *Service {
+func NewService(tempoClient *tempo.Client) *Service {
 	return &Service{
-		recordsStore:    recordsStore,
-		tempoClient:     tempoClient,
-		payloadMaxBytes: payloadMaxBytes,
+		tempoClient: tempoClient,
 	}
 }
 
@@ -54,27 +45,7 @@ func (s *Service) HandleOTLPHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	_ = s.tempoClient.ForwardTrace(req.Context(), payload)
-
-	response := ingestResponse{Status: "accepted"}
-	if len(payload) > s.payloadMaxBytes {
-		record, createErr := s.recordsStore.Create(req.Context(), records.CreateRecordRequest{
-			Kind: "otlp-payload",
-			Payload: map[string]any{
-				"size": len(payload),
-			},
-		})
-		if createErr == nil {
-			response.PayloadExternalized = true
-			response.RecordIDs = []string{record.ID}
-			response.PayloadRef = record.URI
-			response.SpanAttributes = map[string]any{
-				"sigil.payload_externalized": true,
-				"sigil.record_ids":           []string{record.ID},
-			}
-		}
-	}
-
-	writeJSON(w, http.StatusAccepted, response)
+	writeJSON(w, http.StatusAccepted, ingestResponse{Status: "accepted"})
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

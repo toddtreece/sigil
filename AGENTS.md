@@ -1,41 +1,79 @@
 # Repository Guidelines
 
-## Architecture Overview
+## Architecture
 
-- **Grafana Plugin** (`apps/plugin`): app plugin UI and backend proxy endpoints for Sigil query APIs.
-- **Sigil API** (`api`): OTLP ingest, Records API, and query endpoints.
-- **SDKs** (`sdks/*`): manual post-LLM instrumentation helpers.
+- `apps/plugin`: Grafana plugin UI + backend proxy for Sigil query APIs.
+- `api`: OTLP trace ingest + generation ingest + query APIs.
+- `sdks/*`: manual post-LLM instrumentation helpers.
 
-## Development
+## Runtime Workflow (Compose-First)
 
-This repository uses `mise` as task runner and `pnpm` for workspace dependencies.
+- Keep `docker compose` running while developing; rely on hot reload.
+- Use `docker compose logs -f <service>` for debugging.
+- Check bind mounts and service commands in `docker-compose.yaml` before restarting containers.
 
-- Start stack: `mise run up`
-- Start stack with object storage profile: `mise run up:object`
-- Stop stack: `mise run down`
-- Plugin dev only: `mise run dev:plugin`
-- API dev only: `mise run dev:api`
+## Coding Defaults
 
-## Coding Conventions
+- Prefer simple, explicit code over clever abstractions.
+- Add comments only where logic is non-obvious.
+- Every bug fix includes a regression test.
+- No hacks.
 
-### TypeScript / Plugin
+## Go Rules
 
+- Prefer idiomatic Go and standard library first.
+- Use `context.Context` only for cancellation, deadlines, tracing, and request-scoped metadata.
+- Never pass runtime dependencies through `context.Context`.
+- Define interfaces where they are consumed, not where they are implemented.
+- Keep packages loosely coupled; avoid heavy cross-package implementation ties.
+- Add tests where they improve confidence.
+- Prefer table-driven tests when many similar cases exist.
+
+## TypeScript / React Rules
+
+- Keep KISS and DRY.
+- Build small focused components.
+- Always use explicit types for props, state, and API contracts.
 - Keep plugin code under `apps/plugin/src`.
 - Use `getBackendSrv().fetch()` for plugin-to-backend calls.
-- Avoid template boilerplate pages once replaced by Sigil pages.
 
-### Go / Services
+## Generation Ingest Contract
 
-- Keep HTTP/ingest/query/storage concerns split in `api/internal`.
-- Favor explicit interfaces for storage and transport abstractions.
-- Add tests for new handlers and contract edge cases.
+- Custom ingest is generation-first.
+- Use `GenerationIngestService.ExportGenerations` (gRPC) or `POST /api/v1/generations:export` (HTTP parity).
+- Provider wrappers must set generation mode explicitly:
+  - non-stream: `SYNC`
+  - stream: `STREAM`
+- Raw provider artifacts are default OFF; enable only via explicit debug opt-in.
 
-## Scope Guardrails
+## Docs Map
 
-- Tempo runs in compose; do not add custom trace DB logic in bootstrap phase.
-- Use OTEL/OTLP conventions for GenAI attributes as baseline.
-- SDKs are manual instrumentation helpers, not provider monkeypatch wrappers.
+- Canonical architecture: `ARCHITECTURE.md`
+- Canonical docs index: `docs/index.md`
+- Design docs index: `docs/design-docs/index.md`
+- Product specs index: `docs/product-specs/index.md`
+- Execution plans:
+  - active: `docs/exec-plans/active/`
+  - completed: `docs/exec-plans/completed/`
+  - tech debt: `docs/exec-plans/tech-debt-tracker.md`
+- Generation ingest reference: `docs/references/generation-ingest-contract.md`
+- Benchmark + OTEL references: `docs/references/competitive-benchmark.md`
 
-## NO HACKS
+## When To Update Docs
 
-Prioritize clear, maintainable scaffolding over quick hacks.
+| Repo Area | Update Triggers | Required Docs |
+| --- | --- | --- |
+| `apps/plugin` | query/proxy contract changes, UI behavior or data model changes | `ARCHITECTURE.md`, `docs/FRONTEND.md`, relevant plan/spec doc |
+| `api` | ingest/query endpoint changes, proto changes, validation/storage behavior changes | `ARCHITECTURE.md`, `docs/references/generation-ingest-contract.md`, relevant exec plan |
+| `sdks/*` | config/lifecycle changes, generation schema changes, provider wrapper behavior changes | `ARCHITECTURE.md`, `sdks/go/README.md`, relevant plan/reference docs |
+
+## Quality Commands
+
+- `mise run format`
+- `mise run lint`
+- `mise run check`
+
+## Commit Standard
+
+- Use Conventional Commits.
+- Explain both what changed and why in commit body.

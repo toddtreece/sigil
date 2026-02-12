@@ -12,13 +12,15 @@ import (
 	"time"
 
 	"github.com/grafana/sigil/api/internal/config"
+	sigilv1 "github.com/grafana/sigil/api/internal/gen/sigil/v1"
+	"github.com/grafana/sigil/api/internal/generations"
 	"github.com/grafana/sigil/api/internal/ingest"
 	"github.com/grafana/sigil/api/internal/query"
-	"github.com/grafana/sigil/api/internal/records"
 	"github.com/grafana/sigil/api/internal/server"
 	"github.com/grafana/sigil/api/internal/storage/mysql"
 	"github.com/grafana/sigil/api/internal/storage/object"
 	"github.com/grafana/sigil/api/internal/tempo"
+	collecttracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 )
@@ -26,17 +28,19 @@ import (
 func main() {
 	cfg := config.FromEnv()
 
-	recordStore := records.NewMemoryStore()
+	generationStore := generations.NewMemoryStore()
 	_ = mysql.NewStore(cfg.MySQLDSN)
 	_ = object.NewStore(cfg.ObjectStoreEndpoint, cfg.ObjectStoreBucket)
 
-	recordsSvc := records.NewService(recordStore)
+	generationsSvc := generations.NewService(generationStore)
+	generationsGRPC := generations.NewGRPCServer(generationsSvc)
 	querySvc := query.NewService()
 	tempoClient := tempo.NewClient(cfg.TempoOTLPEndpoint)
-	ingestSvc := ingest.NewService(recordsSvc, tempoClient, cfg.PayloadMaxBytes)
+	ingestSvc := ingest.NewService(tempoClient)
+	ingestGRPC := ingest.NewGRPCServer(ingestSvc)
 
 	apiMux := http.NewServeMux()
-	server.RegisterRoutes(apiMux, querySvc, recordsSvc)
+	server.RegisterRoutes(apiMux, querySvc, generationsSvc)
 	apiServer := &http.Server{
 		Addr:    cfg.HTTPAddr,
 		Handler: apiMux,
@@ -50,6 +54,8 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer()
+	collecttracev1.RegisterTraceServiceServer(grpcServer, ingestGRPC)
+	sigilv1.RegisterGenerationIngestServiceServer(grpcServer, generationsGRPC)
 	grpcListener, err := net.Listen("tcp", cfg.OTLPGRPCAddr)
 	if err != nil {
 		log.Fatalf("listen grpc %s: %v", cfg.OTLPGRPCAddr, err)
