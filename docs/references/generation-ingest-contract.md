@@ -29,7 +29,7 @@ audience: both
 
 - `ExportGenerationsRequest.generations[]`
 - Each `Generation` includes:
-  - identity: `id`, `conversation_id`, `trace_id`, `span_id`
+  - identity: `id`, `conversation_id`, `agent_name`, `agent_version`, `trace_id`, `span_id`
   - mode: `GENERATION_MODE_SYNC` or `GENERATION_MODE_STREAM`
   - model: `provider`, `name`
   - prompts/messages/tools/usage/metadata/timestamps/tags
@@ -80,6 +80,8 @@ audience: both
 - Conditionally present when value exists:
   - `sigil.generation.id`
   - `gen_ai.conversation.id`
+  - `gen_ai.agent.name`
+  - `gen_ai.agent.version` (Sigil extension; OTel-style naming)
   - `gen_ai.provider.name`
   - `gen_ai.request.model`
   - `gen_ai.response.id`
@@ -100,6 +102,8 @@ audience: both
   "attributes": {
     "sigil.generation.id": "gen_01K2...",
     "gen_ai.conversation.id": "conv-7",
+    "gen_ai.agent.name": "assistant-anthropic",
+    "gen_ai.agent.version": "1.0.0",
     "gen_ai.operation.name": "generateText",
     "gen_ai.provider.name": "anthropic",
     "gen_ai.request.model": "claude-sonnet-4-5",
@@ -125,6 +129,8 @@ audience: both
   - `gen_ai.tool.type` (if set)
   - `gen_ai.tool.description` (if set)
   - `gen_ai.conversation.id` (if set)
+  - `gen_ai.agent.name` (if set)
+  - `gen_ai.agent.version` (if set)
   - `gen_ai.tool.call.arguments` and `gen_ai.tool.call.result` only when content capture is enabled
 
 ## Generation Payload Shape (What SDK Sends)
@@ -140,6 +146,8 @@ audience: both
 ```json
 {
   "conversation_id": "conv-9b2f",
+  "agent_name": "assistant-openai",
+  "agent_version": "1.0.0",
   "mode": "GENERATION_MODE_SYNC",
   "model": {
     "provider": "openai",
@@ -198,6 +206,8 @@ audience: both
 ```json
 {
   "conversation_id": "conv-stream",
+  "agent_name": "assistant-anthropic",
+  "agent_version": "1.0.0",
   "mode": "GENERATION_MODE_STREAM",
   "model": {
     "provider": "anthropic",
@@ -240,6 +250,8 @@ audience: both
 ```json
 {
   "conversation_id": "conv-9b2f",
+  "agent_name": "assistant-gemini",
+  "agent_version": "1.0.0",
   "mode": "GENERATION_MODE_SYNC",
   "model": {
     "provider": "gemini",

@@ -149,6 +149,8 @@ func requestFromSeed(seed uint64) *sigilv1.ExportGenerationsRequest {
 	generation := &sigilv1.Generation{
 		Id:             "gen-" + randomASCII(rnd, 12),
 		ConversationId: "conv-" + randomASCII(rnd, 10),
+		AgentName:      "agent-" + randomASCII(rnd, 8),
+		AgentVersion:   "v-" + randomASCII(rnd, 6),
 		OperationName:  defaultOperationNameStream,
 		Mode:           sigilv1.GenerationMode_GENERATION_MODE_STREAM,
 		TraceId:        randomHex(rnd, 32),

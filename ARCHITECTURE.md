@@ -56,7 +56,11 @@ audience: both
   - `SYNC`: non-stream provider flows
   - `STREAM`: streaming provider flows
 - Normalized fields are always sent:
-  - conversation/model/system prompt/input/output/tools/usage/metadata/timestamps/tags
+  - model/system prompt/input/output/tools/usage/metadata/timestamps/tags
+- Optional identity fields are supported end-to-end:
+  - `conversation_id`
+  - `agent_name`
+  - `agent_version`
 - Raw artifacts are optional debug payloads and default OFF.
 
 ## SDK Runtime Contracts

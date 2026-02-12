@@ -133,4 +133,6 @@ message Generation {
   google.protobuf.Struct metadata = 19;
   repeated Artifact raw_artifacts = 20;
   string call_error = 21;
+  string agent_name = 22;
+  string agent_version = 23;
 }
