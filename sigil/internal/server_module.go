@@ -14,8 +14,8 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/sigil/sigil/internal/config"
 	sigilv1 "github.com/grafana/sigil/sigil/internal/gen/sigil/v1"
-	"github.com/grafana/sigil/sigil/internal/generations"
-	"github.com/grafana/sigil/sigil/internal/ingest"
+	generationingest "github.com/grafana/sigil/sigil/internal/ingest/generation"
+	traceingest "github.com/grafana/sigil/sigil/internal/ingest/trace"
 	"github.com/grafana/sigil/sigil/internal/query"
 	"github.com/grafana/sigil/sigil/internal/server"
 	"github.com/grafana/sigil/sigil/internal/storage/mysql"
@@ -34,6 +34,7 @@ type serverModule struct {
 	otlpHTTPServer *http.Server
 	grpcServer     *grpc.Server
 	grpcListener   net.Listener
+	tempoClient    *tempo.Client
 
 	runErr chan error
 }
@@ -54,12 +55,12 @@ func (m *serverModule) start(ctx context.Context) error {
 	}
 	_ = object.NewStore(m.cfg.ObjectStoreEndpoint, m.cfg.ObjectStoreBucket)
 
-	generationsSvc := generations.NewService(generationStore)
-	generationsGRPC := generations.NewGRPCServer(generationsSvc)
+	generationSvc := generationingest.NewService(generationStore)
+	generationGRPC := generationingest.NewGRPCServer(generationSvc)
 	querySvc := query.NewService()
-	tempoClient := tempo.NewClient(m.cfg.TempoOTLPEndpoint)
-	ingestSvc := ingest.NewService(tempoClient)
-	ingestGRPC := ingest.NewGRPCServer(ingestSvc)
+	m.tempoClient = tempo.NewClient(m.cfg.TempoOTLPGRPCEndpoint, m.cfg.TempoOTLPHTTPEndpoint)
+	traceSvc := traceingest.NewService(m.tempoClient)
+	traceGRPC := traceingest.NewGRPCServer(traceSvc)
 	tenantAuthCfg := tenantauth.Config{
 		Enabled:      m.cfg.AuthEnabled,
 		FakeTenantID: m.cfg.FakeTenantID,
@@ -67,14 +68,14 @@ func (m *serverModule) start(ctx context.Context) error {
 	protectedHTTP := tenantauth.HTTPMiddleware(tenantAuthCfg)
 
 	apiMux := http.NewServeMux()
-	server.RegisterRoutes(apiMux, querySvc, generationsSvc, protectedHTTP)
+	server.RegisterRoutes(apiMux, querySvc, generationSvc, protectedHTTP)
 	m.apiServer = &http.Server{
 		Addr:    m.cfg.HTTPAddr,
 		Handler: apiMux,
 	}
 
 	otlpHTTPMux := http.NewServeMux()
-	ingest.RegisterHTTPRoutes(otlpHTTPMux, ingestSvc, protectedHTTP)
+	traceingest.RegisterHTTPRoutes(otlpHTTPMux, traceSvc, protectedHTTP)
 	m.otlpHTTPServer = &http.Server{
 		Addr:    m.cfg.OTLPHTTPAddr,
 		Handler: otlpHTTPMux,
@@ -84,8 +85,8 @@ func (m *serverModule) start(ctx context.Context) error {
 		grpc.UnaryInterceptor(tenantauth.UnaryServerInterceptor(tenantAuthCfg)),
 		grpc.StreamInterceptor(tenantauth.StreamServerInterceptor(tenantAuthCfg)),
 	)
-	collecttracev1.RegisterTraceServiceServer(m.grpcServer, ingestGRPC)
-	sigilv1.RegisterGenerationIngestServiceServer(m.grpcServer, generationsGRPC)
+	collecttracev1.RegisterTraceServiceServer(m.grpcServer, traceGRPC)
+	sigilv1.RegisterGenerationIngestServiceServer(m.grpcServer, generationGRPC)
 
 	m.grpcListener, err = net.Listen("tcp", m.cfg.OTLPGRPCAddr)
 	if err != nil {
@@ -124,6 +125,9 @@ func (m *serverModule) stop(_ error) error {
 	if m.grpcListener != nil {
 		_ = m.grpcListener.Close()
 	}
+	if m.tempoClient != nil {
+		_ = m.tempoClient.Close()
+	}
 
 	return nil
 }
@@ -159,7 +163,7 @@ func (m *serverModule) pushRunError(err error) {
 	}
 }
 
-func (m *serverModule) buildGenerationStore(ctx context.Context) (generations.Store, error) {
+func (m *serverModule) buildGenerationStore(ctx context.Context) (generationingest.Store, error) {
 	switch strings.ToLower(strings.TrimSpace(m.cfg.StorageBackend)) {
 	case "", "mysql":
 		store, err := mysql.NewWALStore(m.cfg.MySQLDSN)
@@ -173,7 +177,7 @@ func (m *serverModule) buildGenerationStore(ctx context.Context) (generations.St
 		}
 		return store, nil
 	case "memory":
-		return generations.NewMemoryStore(), nil
+		return generationingest.NewMemoryStore(), nil
 	default:
 		return nil, fmt.Errorf("unsupported storage backend %q", m.cfg.StorageBackend)
 	}

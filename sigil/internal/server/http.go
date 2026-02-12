@@ -5,17 +5,17 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/grafana/sigil/sigil/internal/generations"
+	generationingest "github.com/grafana/sigil/sigil/internal/ingest/generation"
 	"github.com/grafana/sigil/sigil/internal/query"
 )
 
-func RegisterRoutes(mux *http.ServeMux, querySvc *query.Service, generationsSvc *generations.Service, protectedMiddleware func(http.Handler) http.Handler) {
+func RegisterRoutes(mux *http.ServeMux, querySvc *query.Service, generationSvc *generationingest.Service, protectedMiddleware func(http.Handler) http.Handler) {
 	if protectedMiddleware == nil {
 		protectedMiddleware = func(next http.Handler) http.Handler { return next }
 	}
 
 	mux.HandleFunc("/healthz", health)
-	mux.Handle("/api/v1/generations:export", protectedMiddleware(http.HandlerFunc(generations.NewHTTPHandler(generationsSvc))))
+	mux.Handle("/api/v1/generations:export", protectedMiddleware(http.HandlerFunc(generationingest.NewHTTPHandler(generationSvc))))
 	mux.Handle("/api/v1/conversations", protectedMiddleware(http.HandlerFunc(listConversations(querySvc))))
 	mux.Handle("/api/v1/conversations/", protectedMiddleware(http.HandlerFunc(getConversation(querySvc))))
 	mux.Handle("/api/v1/completions", protectedMiddleware(http.HandlerFunc(listCompletions(querySvc))))

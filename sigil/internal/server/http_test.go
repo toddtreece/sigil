@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	sigilv1 "github.com/grafana/sigil/sigil/internal/gen/sigil/v1"
-	"github.com/grafana/sigil/sigil/internal/generations"
+	generationingest "github.com/grafana/sigil/sigil/internal/ingest/generation"
 	"github.com/grafana/sigil/sigil/internal/query"
 	"github.com/grafana/sigil/sigil/internal/tenantauth"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -16,7 +16,7 @@ import (
 func TestExportGenerationsHTTPParity(t *testing.T) {
 	mux := http.NewServeMux()
 	protected := tenantauth.HTTPMiddleware(tenantauth.Config{Enabled: false, FakeTenantID: "fake"})
-	RegisterRoutes(mux, query.NewService(), generations.NewService(generations.NewMemoryStore()), protected)
+	RegisterRoutes(mux, query.NewService(), generationingest.NewService(generationingest.NewMemoryStore()), protected)
 
 	request := &sigilv1.ExportGenerationsRequest{Generations: []*sigilv1.Generation{
 		{
@@ -56,7 +56,7 @@ func TestExportGenerationsHTTPParity(t *testing.T) {
 func TestExportGenerationsHTTPRejectsInvalid(t *testing.T) {
 	mux := http.NewServeMux()
 	protected := tenantauth.HTTPMiddleware(tenantauth.Config{Enabled: false, FakeTenantID: "fake"})
-	RegisterRoutes(mux, query.NewService(), generations.NewService(generations.NewMemoryStore()), protected)
+	RegisterRoutes(mux, query.NewService(), generationingest.NewService(generationingest.NewMemoryStore()), protected)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/generations:export", bytes.NewBufferString(`{"generations":[{"id":"gen-http-invalid","mode":"GENERATION_MODE_SYNC","model":{"name":"gpt-5"}}]}`))
 	resp := httptest.NewRecorder()
@@ -83,7 +83,7 @@ func TestExportGenerationsHTTPRejectsInvalid(t *testing.T) {
 
 func TestRecordsEndpointsAreRemoved(t *testing.T) {
 	mux := http.NewServeMux()
-	RegisterRoutes(mux, query.NewService(), generations.NewService(generations.NewMemoryStore()), nil)
+	RegisterRoutes(mux, query.NewService(), generationingest.NewService(generationingest.NewMemoryStore()), nil)
 
 	for _, path := range []string{"/api/v1/records", "/api/v1/records/rec-1"} {
 		req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{}`))
@@ -99,7 +99,7 @@ func TestRecordsEndpointsAreRemoved(t *testing.T) {
 func TestProtectedRoutesRequireTenantHeaderWhenAuthEnabled(t *testing.T) {
 	mux := http.NewServeMux()
 	protected := tenantauth.HTTPMiddleware(tenantauth.Config{Enabled: true, FakeTenantID: "fake"})
-	RegisterRoutes(mux, query.NewService(), generations.NewService(generations.NewMemoryStore()), protected)
+	RegisterRoutes(mux, query.NewService(), generationingest.NewService(generationingest.NewMemoryStore()), protected)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
 	resp := httptest.NewRecorder()
@@ -120,7 +120,7 @@ func TestProtectedRoutesRequireTenantHeaderWhenAuthEnabled(t *testing.T) {
 func TestHealthRouteIsExemptFromTenantHeader(t *testing.T) {
 	mux := http.NewServeMux()
 	protected := tenantauth.HTTPMiddleware(tenantauth.Config{Enabled: true, FakeTenantID: "fake"})
-	RegisterRoutes(mux, query.NewService(), generations.NewService(generations.NewMemoryStore()), protected)
+	RegisterRoutes(mux, query.NewService(), generationingest.NewService(generationingest.NewMemoryStore()), protected)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	resp := httptest.NewRecorder()

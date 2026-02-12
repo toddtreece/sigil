@@ -43,3 +43,30 @@ func TestValidateAcceptsKnownTargets(t *testing.T) {
 		})
 	}
 }
+
+func TestFromEnvTempoEndpointDefaults(t *testing.T) {
+	t.Setenv("SIGIL_TEMPO_OTLP_GRPC_ENDPOINT", "")
+	t.Setenv("SIGIL_TEMPO_OTLP_HTTP_ENDPOINT", "")
+	t.Setenv("SIGIL_TEMPO_OTLP_ENDPOINT", "legacy:9999")
+
+	cfg := FromEnv()
+	if cfg.TempoOTLPGRPCEndpoint != "tempo:4317" {
+		t.Fatalf("expected default grpc endpoint tempo:4317, got %q", cfg.TempoOTLPGRPCEndpoint)
+	}
+	if cfg.TempoOTLPHTTPEndpoint != "tempo:4318" {
+		t.Fatalf("expected default http endpoint tempo:4318, got %q", cfg.TempoOTLPHTTPEndpoint)
+	}
+}
+
+func TestFromEnvTempoEndpointsOverride(t *testing.T) {
+	t.Setenv("SIGIL_TEMPO_OTLP_GRPC_ENDPOINT", "tempo-grpc:14317")
+	t.Setenv("SIGIL_TEMPO_OTLP_HTTP_ENDPOINT", "http://tempo-http:14318/v1/traces")
+
+	cfg := FromEnv()
+	if cfg.TempoOTLPGRPCEndpoint != "tempo-grpc:14317" {
+		t.Fatalf("expected grpc endpoint override, got %q", cfg.TempoOTLPGRPCEndpoint)
+	}
+	if cfg.TempoOTLPHTTPEndpoint != "http://tempo-http:14318/v1/traces" {
+		t.Fatalf("expected http endpoint override, got %q", cfg.TempoOTLPHTTPEndpoint)
+	}
+}

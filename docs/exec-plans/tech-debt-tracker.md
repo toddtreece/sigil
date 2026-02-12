@@ -22,12 +22,12 @@ Track deferred cross-cutting debt, unresolved architecture choices, and post-pha
 - [x] Add CI workflow baseline for format/lint/typecheck quality gates (`mise run ci` in `.github/workflows/ci.yml`).
 - [ ] Expand CI workflows to run test and e2e suites.
 - [x] Add Go OTLP ingest integration coverage (gRPC ingest path baseline exists).
-- [ ] Add Python and TypeScript/JavaScript OTLP ingest integration coverage.
-- [ ] Add integration tests for ingest forwarding to Tempo.
+- [x] Add Python and TypeScript/JavaScript OTLP ingest integration coverage.
+- [x] Add integration tests for ingest forwarding to Tempo.
 - [ ] Add benchmark and payload-size guardrail tests.
-- [ ] Expand SDK end-to-end examples for Python and TypeScript/JavaScript.
+- [x] Expand SDK end-to-end examples for Python and TypeScript/JavaScript.
 - [ ] Define retention and pruning policies for hot MySQL payloads vs compacted object storage.
-- [ ] Define ingestion-log abstraction interface and implementation migration plan.
+- [x] Define ingestion-log abstraction interface and implementation migration plan.
 - [ ] Evaluate Kafka as next backend for ingestion-log abstraction.
 - [ ] Evaluate WarpStream as a lower-ops-cost Kafka-compatible backend option.
 - [ ] Add automated model-card catalog refresh tooling (external source + static fallback).
