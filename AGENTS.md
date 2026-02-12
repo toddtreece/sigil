@@ -19,6 +19,12 @@
 - Every bug fix includes a regression test.
 - No hacks.
 
+## Planning Questions (Agent Behavior)
+
+- When asking the user to choose in planning mode, include enough context to explain why the decision matters and what changes based on the answer.
+- For each choice, explain the main tradeoff (for example: speed vs. correctness, short-term vs. long-term maintainability).
+- If the decision changes code structure or APIs, include a tiny representative snippet for each option so the user can compare concrete outcomes.
+
 ## Go Rules
 
 - Prefer idiomatic Go and standard library first.
