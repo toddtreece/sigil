@@ -11,7 +11,7 @@ audience: both
 ## System Boundaries
 
 - `apps/plugin`: Grafana plugin UI and backend proxy for Sigil APIs.
-- `api`: OTLP trace ingest, generation ingest, and query APIs.
+- `sigil`: OTLP trace ingest, generation ingest, and query APIs.
 - `sdks/*`: post-LLM instrumentation SDKs (Go, Python, TypeScript/JavaScript).
 - Tempo: trace storage and TraceQL execution backend.
 - MySQL: hot metadata/index store plus hot generation payload store.
@@ -177,11 +177,11 @@ See `docs/references/grafana-query-response-shapes.md`.
 ## Service Responsibilities
 
 - `apps/plugin`: UI routes and backend proxy handlers for Sigil query contracts.
-- `api/internal/ingest`: OTLP ingest handling and Tempo forwarding.
-- `api/internal/generations`: generation ingest validation and persistence coordination.
-- `api/internal/query`: Tempo-first query orchestration plus storage hydration and fan-out reads.
-- `api/internal/storage/mysql`: hot metadata/index/payload access.
-- `api/internal/storage/object`: compacted payload access.
+- `sigil/internal/ingest`: OTLP ingest handling and Tempo forwarding.
+- `sigil/internal/generations`: generation ingest validation and persistence coordination.
+- `sigil/internal/query`: Tempo-first query orchestration plus storage hydration and fan-out reads.
+- `sigil/internal/storage/mysql`: hot metadata/index/payload access.
+- `sigil/internal/storage/object`: compacted payload access.
   - implementation should wrap Thanos `objstore` primitives.
 
 ## Evolution Path

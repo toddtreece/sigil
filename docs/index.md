@@ -14,6 +14,7 @@ This is the canonical navigation map for repository documentation.
 
 - `ARCHITECTURE.md`: canonical system architecture, data flow, and contracts.
 - `AGENTS.md`: repository workflow guardrails and doc update triggers.
+- `../sigil`: Sigil service source module.
 
 ## Domain Guides
 

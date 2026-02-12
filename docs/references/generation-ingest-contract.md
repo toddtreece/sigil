@@ -10,8 +10,8 @@ audience: both
 
 ## Sources
 
-- Proto: `api/proto/sigil/v1/generation_ingest.proto`
-- API generated stubs: `api/internal/gen/sigil/v1/`
+- Proto: `sigil/proto/sigil/v1/generation_ingest.proto`
+- API generated stubs: `sigil/internal/gen/sigil/v1/`
 - SDK generated stubs: `sdks/go/sigil/internal/gen/sigil/v1/`
 
 ## Transports
