@@ -62,7 +62,7 @@ Current status:
 
 - Go OTLP ingest integration coverage exists for gRPC ingest path.
 - Python and TypeScript/JavaScript OTLP ingest integration coverage is still missing.
-- Tempo forwarding integration coverage is still missing.
+- Tempo forwarding integration coverage now exists for HTTP and gRPC ingest paths.
 
 ## Deferred Reliability Work
 

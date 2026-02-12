@@ -1,4 +1,4 @@
-package generations
+package generation
 
 import (
 	"bytes"

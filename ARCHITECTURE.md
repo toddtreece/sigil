@@ -45,6 +45,15 @@ Tenant boundary completion is tracked in:
 
 - SDKs export traces via OTLP (`grpc` or `http`) using SDK trace configuration.
 - API exposes OTLP gRPC (`:4317`) and OTLP HTTP traces (`/v1/traces`) and forwards to Tempo.
+- Forwarding is transport-matched:
+  - incoming HTTP traces are forwarded to Tempo OTLP HTTP
+  - incoming gRPC traces are forwarded to Tempo OTLP gRPC
+- Forwarding propagates inbound auth context as-is:
+  - HTTP request headers are copied upstream unchanged
+  - gRPC metadata is copied upstream unchanged
+- Tempo upstream endpoints are configured independently:
+  - `SIGIL_TEMPO_OTLP_GRPC_ENDPOINT` (default `tempo:4317`)
+  - `SIGIL_TEMPO_OTLP_HTTP_ENDPOINT` (default `tempo:4318`)
 
 ### Generation pipeline
 
@@ -177,8 +186,8 @@ See `docs/references/grafana-query-response-shapes.md`.
 ## Service Responsibilities
 
 - `apps/plugin`: UI routes and backend proxy handlers for Sigil query contracts.
-- `sigil/internal/ingest`: OTLP ingest handling and Tempo forwarding.
-- `sigil/internal/generations`: generation ingest validation and persistence coordination.
+- `sigil/internal/ingest/trace`: OTLP trace ingest handling and Tempo forwarding.
+- `sigil/internal/ingest/generation`: generation ingest validation and persistence coordination.
 - `sigil/internal/query`: Tempo-first query orchestration plus storage hydration and fan-out reads.
 - `sigil/internal/storage/mysql`: hot metadata/index/payload access.
 - `sigil/internal/storage/object`: compacted payload access.

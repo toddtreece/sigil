@@ -1,4 +1,4 @@
-package ingest
+package trace
 
 import (
 	"context"
@@ -7,19 +7,21 @@ import (
 	"net/http"
 
 	"github.com/grafana/sigil/sigil/internal/tempo"
+	collecttracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 )
 
 type Service struct {
-	tempoClient *tempo.Client
+	tempoForwarder TempoForwarder
 }
 
-type ingestResponse struct {
-	Status string `json:"status"`
+type TempoForwarder interface {
+	ForwardTraceHTTP(ctx context.Context, payload []byte, headers http.Header) (*tempo.HTTPForwardResponse, error)
+	ForwardTraceGRPC(ctx context.Context, request *collecttracev1.ExportTraceServiceRequest) (*collecttracev1.ExportTraceServiceResponse, error)
 }
 
-func NewService(tempoClient *tempo.Client) *Service {
+func NewService(tempoForwarder TempoForwarder) *Service {
 	return &Service{
-		tempoClient: tempoClient,
+		tempoForwarder: tempoForwarder,
 	}
 }
 
@@ -48,8 +50,23 @@ func (s *Service) HandleOTLPHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_ = s.tempoClient.ForwardTrace(req.Context(), payload)
-	writeJSON(w, http.StatusAccepted, ingestResponse{Status: "accepted"})
+	response, err := s.tempoForwarder.ForwardTraceHTTP(req.Context(), payload, req.Header)
+	if err != nil {
+		http.Error(w, "forward to tempo", http.StatusBadGateway)
+		return
+	}
+	if response == nil {
+		http.Error(w, "forward to tempo", http.StatusBadGateway)
+		return
+	}
+
+	for key, values := range response.Headers {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	w.WriteHeader(response.StatusCode)
+	_, _ = w.Write(response.Body)
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -58,6 +75,6 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func (s *Service) ForwardToTempo(ctx context.Context, payload []byte) error {
-	return s.tempoClient.ForwardTrace(ctx, payload)
+func (s *Service) ForwardToTempoGRPC(ctx context.Context, request *collecttracev1.ExportTraceServiceRequest) (*collecttracev1.ExportTraceServiceResponse, error) {
+	return s.tempoForwarder.ForwardTraceGRPC(ctx, request)
 }

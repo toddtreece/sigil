@@ -76,7 +76,8 @@ services:
       SIGIL_TARGET: all
       SIGIL_AUTH_ENABLED: false
       SIGIL_FAKE_TENANT_ID: fake
-      SIGIL_TEMPO_OTLP_ENDPOINT: tempo:4317
+      SIGIL_TEMPO_OTLP_GRPC_ENDPOINT: tempo:4317
+      SIGIL_TEMPO_OTLP_HTTP_ENDPOINT: tempo:4318
       SIGIL_STORAGE_BACKEND: mysql
       SIGIL_MYSQL_DSN: sigil:sigil@tcp(mysql:3306)/sigil?parseTime=true
       SIGIL_OBJECT_STORE_ENDPOINT: http://minio:9000
