@@ -22,6 +22,18 @@ audience: both
 
 Phase 2 defines production contracts for SDK parity, query envelopes, tenant boundaries, and hybrid storage/query behavior. Some runtime paths remain placeholders today; this file defines the implementation target.
 
+### Execution priority
+
+Active implementation sequencing is SDK-first:
+
+1. Python SDK parity
+2. query proxy + tenant boundary
+3. hybrid storage/query behavior
+
+TypeScript/JavaScript SDK parity is completed and tracked in:
+
+- `docs/exec-plans/completed/2026-02-12-phase-2-sdk-parity-typescript-javascript.md`
+
 ## Ingest Model (Generation-First)
 
 ### Trace pipeline
@@ -114,11 +126,13 @@ See `docs/references/grafana-query-response-shapes.md`.
   - `STREAM`: streaming provider flows
 - Normalized fields are always sent:
   - model/system prompt/input/output/tools/usage/metadata/timestamps/tags
+- Tool definitions support optional input schema JSON for transport parity (`input_schema_json` over gRPC).
 - Optional identity fields are supported end-to-end:
   - `conversation_id`
   - `agent_name`
   - `agent_version`
 - Raw artifacts are optional debug payloads and default OFF.
+- Artifact identity fields (`name`, `record_id`, `uri`) are supported when present.
 
 ## SDK Runtime Contracts
 
@@ -127,6 +141,8 @@ See `docs/references/grafana-query-response-shapes.md`.
 - Provider wrappers are convenience sugar, documented wrapper-first in provider modules.
 - Provider parity target for Go/Python/TS: OpenAI, Anthropic, Gemini.
 - Raw provider artifacts are default OFF, explicit opt-in only.
+- SDK validation enforces message role/part compatibility and artifact payload-or-record-id constraints.
+- Empty tool names return a no-op tool recorder (instrumentation safety behavior).
 - `rec.Err()` surfaces local validation/enqueue failures only.
 - Background export failures are retried and logged.
 
