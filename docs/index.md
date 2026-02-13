@@ -40,6 +40,7 @@ This is the canonical navigation map for repository documentation.
   - Phase 2 parallel tracks:
     - `exec-plans/active/2026-02-12-phase-2-query-proxy.md`
     - `exec-plans/active/2026-02-12-phase-2-hybrid-storage.md`
+    - `exec-plans/active/2026-02-13-compaction-scaling.md`
   - Additional active plan:
     - `exec-plans/active/2026-02-12-model-card-catalog-refresh.md`
   - Completed: `exec-plans/completed/`

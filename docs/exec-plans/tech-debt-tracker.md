@@ -19,6 +19,10 @@ Track deferred cross-cutting debt, unresolved architecture choices, and post-pha
 
 ## Tasks
 
+Status rule:
+
+- Do not mark an item as addressed (`[x]`) until the implementation code and automated tests are merged to `main`.
+
 - [x] Add CI workflow baseline for format/lint/typecheck quality gates (`mise run ci` in `.github/workflows/ci.yml`).
 - [ ] Expand CI workflows to run test and e2e suites.
 - [x] Add Go OTLP ingest integration coverage (gRPC ingest path baseline exists).

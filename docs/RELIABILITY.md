@@ -31,6 +31,7 @@ Purpose: define reliability expectations for ingest, hybrid storage reads, and p
 - Object storage access standardizes on Thanos `objstore` interfaces (`github.com/thanos-io/objstore`).
 - compaction must be idempotent and retry-safe.
 - hot payload rows are not removed until durable compaction write succeeds.
+- finalize-retry semantics: if block upload and metadata insert succeed but row finalize fails, retry must treat duplicate block metadata as idempotent and continue finalization instead of failing permanently.
 
 ## Query Reliability
 

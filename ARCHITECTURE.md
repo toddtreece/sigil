@@ -205,60 +205,104 @@ flowchart LR
     I -.->|"Phase D target: trace query"| D
 ```
 
-### Distributed compactor topology
+### Distributed compactor topology (target; not merged)
+
+Status (2026-02-13):
+
+- Implemented on `main`: tenant-level leases (`compactor_leases` keyed by `tenant_id`) and transactional `FOR UPDATE SKIP LOCKED` claim flow.
+- Planned in active execution plan: shard-level leases, schema-based claims, and worker-pool drain loops.
+
+The diagram below is the target topology from `docs/design-docs/2026-02-13-compaction-scaling.md`; it is not yet the runtime behavior on `main`.
 
 ```mermaid
 flowchart TB
-    subgraph R["Compactor Replicas"]
-        A["Compactor A"]
-        B["Compactor B"]
-        C["Compactor C"]
+    subgraph compactors["Compactor Replicas"]
+        subgraph compA["Compactor A"]
+            W1["Worker 1"]
+            W2["Worker 2"]
+        end
+        subgraph compB["Compactor B"]
+            W3["Worker 1"]
+            W4["Worker 2"]
+        end
     end
-    A --> L["MySQL: compactor_leases"]
-    B --> L
-    C --> L
-    L --> O["Single active owner per tenant lease key"]
-    O --> X["Tx claim rows: SELECT ... FOR UPDATE SKIP LOCKED"]
-    X --> G["MySQL: generations"]
-    O --> M["MySQL: compaction_blocks"]
-    O --> S["Object Storage"]
+    subgraph leases["MySQL: compactor_leases\n(tenant_id, shard_id)"]
+        L1["tenant-1 / shard-0"]
+        L2["tenant-1 / shard-1"]
+        L3["tenant-2 / shard-0"]
+        L4["tenant-2 / shard-1"]
+    end
+    W1 -->|"owns"| L1
+    W2 -->|"owns"| L3
+    W3 -->|"owns"| L2
+    W4 -->|"owns"| L4
+    leases --> G["MySQL: generations\n(schema-based claims)"]
+    G --> OS["Object Storage"]
+    G --> M["MySQL: compaction_blocks"]
 ```
 
-### Compaction transaction flow
+### Compaction flow (target; not merged)
+
+Status (2026-02-13):
+
+- Implemented on `main`: one transaction spans claim, block build, object upload, metadata insert, and compact-mark update.
+- Planned in active execution plan: schema-based claim/load/finalize with short claim/finalize updates and out-of-transaction object I/O.
+
+The sequence below documents the target flow, not current `main`.
 
 ```mermaid
 sequenceDiagram
-    participant C as Compactor owner
+    participant W as Worker goroutine
     participant DB as MySQL
     participant O as Object Storage
-    C->>DB: ListTenantsForCompaction(now, limit)
-    C->>DB: AcquireLease(tenant, owner_id, ttl)
+
+    W->>DB: ListShardsForCompaction(shardWindow, shardCount, limit)
+    DB-->>W: tenant/shard pairs ordered by backlog
+    W->>DB: AcquireLease(tenant, shard, owner, ttl)
     alt Lease held
-        C->>DB: BEGIN
-        C->>DB: SELECT ... FOR UPDATE SKIP LOCKED (limit=batch)
-        DB-->>C: claimed generations
-        C->>O: Upload block data + index objects
-        C->>DB: INSERT compaction_blocks
-        C->>DB: UPDATE generations SET compacted=true, compacted_at=NOW(6)
-        C->>DB: COMMIT
+        loop Until drained or budget exhausted
+            W->>DB: UPDATE claim batch (claimed_by=owner, shard predicate)
+            DB-->>W: claimed count
+            alt Rows claimed
+                W->>DB: SELECT claimed rows (load payloads)
+                DB-->>W: generation payloads
+                W->>W: Build block from generations
+                W->>O: Upload data.sigil + index.sigil
+                W->>DB: INSERT compaction_blocks metadata
+                W->>DB: UPDATE finalize (compacted=true, clear claim)
+                W->>DB: RenewLease if near expiry
+            else No rows left
+                W-->>W: Shard drained
+            end
+        end
+        W-->>W: Pick next shard from discovery
     else Lease denied
-        C-->>C: Skip tenant this cycle
+        W-->>W: Pick next shard
     end
 ```
 
-### Compactor scaling characteristics (current implementation)
+### Compactor scaling characteristics
 
-- Compaction scales horizontally across tenants by running multiple compactor instances.
-- Per tenant, work is serialized:
-  - lease ownership is single-writer (`compactor_leases` row per tenant)
-  - claim path uses one transaction with `FOR UPDATE SKIP LOCKED`
-- Current compact loop processes at most one claim batch per tenant per cycle.
-- Truncate loop is batched but drains repeatedly in one cycle (`while deleted == batchSize`).
-- Net effect:
-  - many-tenant workloads scale well with more compactor replicas
-  - one very hot tenant is limited by single-owner, single-batch-per-cycle behavior
-- Recorded debt for later improvement:
-  - move from long transaction claim pattern to durable schema-based claim state.
+Current behavior on `main`:
+
+- Compaction scales across tenants by running multiple compactor instances.
+- Per tenant, work is serialized by a single lease key (`tenant_id`) in `compactor_leases`.
+- Claim path is transactional `FOR UPDATE SKIP LOCKED`; lock duration includes object store upload time.
+- Compact loop performs at most one claim batch per tenant per compact tick.
+
+Target behavior (tracked, not merged):
+
+- Compaction scales across tenants and within a single tenant via time-range sharding.
+- Each tenant is split into N shards (`SIGIL_COMPACTOR_SHARD_COUNT`) that can be processed in parallel.
+- Claims use schema-based durable state (`claimed_by`/`claimed_at`) with short claim/finalize updates.
+- Workers run multi-batch shard drain loops with backlog-aware scheduling and lease renewal.
+- Stale claim recovery sweeps release orphaned claims after `claim_ttl`.
+- Truncation is shard-aware.
+
+References:
+
+- Design doc: `docs/design-docs/2026-02-13-compaction-scaling.md`
+- Execution plan: `docs/exec-plans/active/2026-02-13-compaction-scaling.md`
 
 ## API Contracts
 
