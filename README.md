@@ -13,38 +13,44 @@ It combines OpenTelemetry traces with normalized LLM generation data, so you can
 ## What You Get
 
 - Grafana app plugin (`/apps/plugin`) for conversations, completions, traces, and settings.
-- Go service (`/sigil`) for ingest and query:
-  - OTLP gRPC `:4317`
-  - OTLP HTTP `:4318/v1/traces`
-  - Generation ingest and query APIs on `:8080`
+- Go service (`/sigil`) for generation ingest and query APIs on `:8080`.
+- SDKs (`/sdks`) for Go, Python, TypeScript/JavaScript, Java, and .NET/C#:
+  - OTel traces with AI-specific attributes (`gen_ai.*`).
+  - OTel metrics: latency histograms and token usage distributions.
+  - Structured generation export to Sigil.
+- Alloy / OTel Collector as the telemetry pipeline (traces + metrics).
 - Tempo (docker compose) as trace storage.
+- Prometheus as metrics storage for SDK-emitted AI metrics.
 - MySQL as default metadata and record-reference storage.
 - Object storage for compacted payloads:
   - MinIO (default local/core profile)
   - AWS S3
   - Google Cloud Storage
   - Azure Blob Storage
-- SDKs (`/sdks`) for Go, Python, TypeScript/JavaScript, and Java.
-- `sdk-traffic` core compose service that continuously emits synthetic SDK traffic across Go/JS/Python/Java/.NET provider and custom paths for local devex validation.
 
 ## Why Sigil
 
 - **Trace + generation correlation**: connect model calls, tool executions, and request traces.
-- **OpenTelemetry-native**: ingest traces via OTLP gRPC or OTLP HTTP.
+- **OpenTelemetry-native**: SDKs emit OTel traces and metrics via standard OTLP. Works with any OTel-compatible collector.
+- **Built-in AI metrics**: latency histograms (streaming, sync, tool calls), token usage distributions, error rates -- per provider, model, agent, and namespace.
 - **Generation-first ingest**: export normalized generation payloads across providers.
 - **Grafana-native experience**: query and explore from the Sigil app plugin.
-- **SDK support**: Go, Python, TypeScript/JavaScript, and Java SDKs with provider helpers.
+- **SDK support**: Go, Python, TypeScript/JavaScript, Java, and .NET/C# SDKs with provider helpers.
 
 ## Architecture At A Glance
 
 ```mermaid
 flowchart LR
-    A["Your AI App"] -->|"OTLP traces"| B["Sigil API"]
-    A -->|"Normalized generations"| B
-    B --> C["Grafana Tempo"]
+    A["Your AI App"]
+    A -->|"OTLP traces + metrics"| AL["Alloy / Collector"]
+    A -->|"Normalized generations"| B["Sigil API"]
+    AL -->|"enriched traces"| C["Grafana Tempo"]
+    AL -->|"enriched metrics"| P["Prometheus"]
     B --> D["MySQL (hot metadata + payloads)"]
-    B --> E["Object storage (optional, compacted payloads)"]
-    F["Grafana Sigil App"] -->|"Query APIs"| B
+    B --> E["Object storage (compacted payloads)"]
+    F["Grafana"] -->|"generations"| B
+    F -->|"traces"| C
+    F -->|"metrics"| P
 ```
 
 ## Get Started (Local)
@@ -76,7 +82,7 @@ mise run deps
 mise run up
 ```
 
-This starts Grafana, the Sigil app plugin, the Sigil API service, Tempo, MySQL, MinIO, and the `sdk-traffic` synthetic SDK traffic emitter.
+This starts Grafana, the Sigil app plugin, the Sigil API service, Alloy, Tempo, Prometheus, MySQL, and MinIO.
 
 ### 4. Open the Sigil app
 
@@ -125,7 +131,7 @@ const client = new SigilClient({
   },
   trace: {
     protocol: "http",
-    endpoint: "http://localhost:4318/v1/traces",
+    endpoint: "http://localhost:4318/v1/traces", // Alloy OTLP endpoint
     auth: { mode: "none" },
   },
 });

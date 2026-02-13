@@ -11,9 +11,11 @@ audience: both
 ## System Boundaries
 
 - `apps/plugin`: Grafana plugin UI and backend proxy for Sigil APIs.
-- `sigil`: OTLP trace ingest, generation ingest, and query APIs.
-- `sdks/*`: post-LLM instrumentation SDKs (Go, Python, TypeScript/JavaScript, Java, .NET/C#).
+- `sigil`: generation ingest and query APIs.
+- `sdks/*`: post-LLM instrumentation SDKs (Go, Python, TypeScript/JavaScript, Java, .NET/C#). SDKs emit OTel traces, OTel metrics, and structured generation records.
+- Alloy / OTel Collector: telemetry pipeline for traces and metrics. Receives OTLP from SDKs, enriches with infrastructure metadata (k8s namespace, cluster, service), and forwards to backends.
 - Tempo: trace storage and TraceQL execution backend.
+- Prometheus: metrics storage for SDK-emitted AI observability metrics.
 - MySQL: hot metadata/index store plus hot generation payload store.
 - Object storage: long-term compacted generation payload storage.
   - implementation standard: Thanos `objstore` Go package (`github.com/thanos-io/objstore`).
@@ -44,19 +46,30 @@ Tenant boundary completion is tracked in:
 
 ## Ingest Model (Generation-First)
 
-### Trace pipeline
+### Telemetry pipeline (traces + metrics)
 
-- SDKs export traces via OTLP (`grpc` or `http`) using SDK trace configuration.
-- API exposes OTLP gRPC (`:4317`) and OTLP HTTP traces (`/v1/traces`) and forwards to Tempo.
-- Forwarding is transport-matched:
-  - incoming HTTP traces are forwarded to Tempo OTLP HTTP
-  - incoming gRPC traces are forwarded to Tempo OTLP gRPC
-- Forwarding propagates inbound auth context as-is:
-  - HTTP request headers are copied upstream unchanged
-  - gRPC metadata is copied upstream unchanged
-- Tempo upstream endpoints are configured independently:
-  - `SIGIL_TEMPO_OTLP_GRPC_ENDPOINT` (default `tempo:4317`)
-  - `SIGIL_TEMPO_OTLP_HTTP_ENDPOINT` (default `tempo:4318`)
+- SDKs export OTLP traces and OTLP metrics to Alloy / OTel Collector via `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- Alloy/Collector enriches telemetry with infrastructure metadata (k8s namespace, cluster, service, pod) and forwards:
+  - Traces to Tempo.
+  - Metrics to Prometheus.
+- Sigil is NOT in the trace or metrics path. Traces and metrics flow through the standard OTel pipeline.
+
+### SDK metrics
+
+SDKs emit four OTel histogram instruments alongside traces:
+
+- `gen_ai.client.operation.duration` (seconds): latency histogram for generations and tool calls.
+  - Attributes: `gen_ai.operation.name` (`generateText` | `streamText` | `execute_tool`), `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.agent.name`, `error.type`, `error.category`.
+- `gen_ai.client.token.usage` (tokens): token count histogram per generation, split by token type.
+  - Attributes: `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.agent.name`, `gen_ai.token.type` (`input` | `output` | `cache_read` | `cache_write` | `cache_creation` | `reasoning`).
+- `gen_ai.client.time_to_first_token` (seconds): TTFT histogram for streaming operations.
+  - Attributes: `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.agent.name`.
+- `gen_ai.client.tool_calls_per_operation` (count): tool call count distribution per generation.
+  - Attributes: `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.agent.name`.
+
+These metrics get collector-enriched infrastructure labels (namespace, cluster, service) automatically.
+
+Design doc: `docs/design-docs/2026-02-13-sdk-metrics-and-telemetry-pipeline.md`
 
 ### Generation pipeline
 
@@ -64,12 +77,12 @@ Tenant boundary completion is tracked in:
 - Primary transport is gRPC with HTTP parity.
 - HTTP and gRPC ingest paths call one shared export service path.
 - Export in SDKs is buffered, batched, and asynchronous.
-- `shutdown` is required to flush pending generations and trace provider state.
+- `shutdown` is required to flush pending generations, metrics, and trace provider state.
 
 ### Deployment topology guidance
 
-- Generation path can be direct to Sigil generation ingest (`/api/v1/generations:export` or `GenerationIngestService.ExportGenerations`) using tenant auth mode.
-- Trace path can target OTEL Collector/Alloy (`/v1/traces` or `:4317`) with separate auth configuration.
+- Generation path is direct to Sigil generation ingest (`/api/v1/generations:export` or `GenerationIngestService.ExportGenerations`) using tenant auth mode.
+- Trace and metrics path goes through Alloy / OTel Collector. `OTEL_EXPORTER_OTLP_ENDPOINT` points at the collector.
 - Enterprise proxy pattern:
   - client sends bearer token
   - proxy authenticates bearer and translates to upstream `X-Scope-OrgID`
@@ -102,8 +115,8 @@ Write path components:
 3. Generation ingest service validates payloads and writes:
    - `generations` rows (hot payload + compaction cursor state)
    - `conversations` projection rows.
-4. Client SDKs also export OTLP traces to Sigil OTLP ingest.
-5. Sigil trace ingest forwards OTLP to Tempo.
+4. Client SDKs export OTLP traces and metrics to Alloy / OTel Collector.
+5. Alloy enriches telemetry with infrastructure metadata and forwards traces to Tempo and metrics to Prometheus.
 6. Compactor target reads MySQL generations, writes object blocks + metadata, then marks/truncates compacted rows.
 
 ```mermaid
@@ -113,10 +126,9 @@ flowchart LR
     C --> D["Generation service"]
     D --> E["MySQL: generations"]
     D --> F["MySQL: conversations"]
-    A -->|"OTLP traces"| G["Sigil Trace Ingest"]
-    G --> H["Tenant/Auth middleware"]
-    H --> I["Tempo client"]
-    I --> J["Tempo"]
+    A -->|"OTLP traces + metrics"| G["Alloy / Collector"]
+    G -->|"enriched traces"| J["Tempo"]
+    G -->|"enriched metrics"| P["Prometheus"]
     E --> K["Compactor target"]
     K --> L["Object store: data.sigil/index.sigil"]
     K --> M["MySQL: compaction_blocks"]
@@ -160,7 +172,7 @@ flowchart LR
   - `SIGIL_AUTH_ENABLED` (default `true`)
   - `SIGIL_FAKE_TENANT_ID` (default `fake`)
 - Tenant handling uses dskit utilities (`user`, `tenant`, `middleware`).
-- Enforcement scope is uniform for query + generation ingest + OTLP ingest (HTTP and gRPC).
+- Enforcement scope is uniform for query + generation ingest (HTTP and gRPC).
 - Missing tenant behavior in auth-enabled mode:
   - HTTP protected endpoints: `401 Unauthorized`
   - gRPC protected methods: `Unauthenticated`
@@ -194,9 +206,10 @@ Query reads fan out to hot and cold stores, union results, and dedupe by `genera
 
 ```mermaid
 flowchart LR
-    A["SDKs / Client Apps"] -->|"OTLP traces"| B["Sigil Trace Ingest"]
+    A["SDKs / Client Apps"] -->|"OTLP traces + metrics"| AL["Alloy / Collector"]
     A -->|"Generation export"| C["Sigil Generation Ingest"]
-    B -->|"OTLP forward"| D["Tempo"]
+    AL -->|"enriched traces"| D["Tempo"]
+    AL -->|"enriched metrics"| P["Prometheus"]
     C -->|"insert rows + conversation projection"| E["MySQL: generations + conversations"]
     E -->|"discover tenants + claim batches"| F["Compactor Service (N instances)"]
     F -->|"upload data.sigil + index.sigil"| G["Object Storage (S3, GCS, Azure, MinIO)"]
@@ -206,6 +219,7 @@ flowchart LR
     I -.->|"Phase D target: list/read block metadata"| H
     I -.->|"Phase D target: read block objects"| G
     I -.->|"Phase D target: trace query"| D
+    I -.->|"metrics queries"| P
 ```
 
 ### Distributed compactor topology
@@ -300,10 +314,10 @@ References:
 
 ### Ingest
 
-- OTLP gRPC traces: `:4317` (`opentelemetry.proto.collector.trace.v1.TraceService/Export`)
-- OTLP HTTP traces: `POST /v1/traces`
 - Generation ingest gRPC: `sigil.v1.GenerationIngestService.ExportGenerations`
 - Generation ingest HTTP parity: `POST /api/v1/generations:export`
+
+Note: OTLP trace and metric ingest is handled by Alloy / OTel Collector, not by Sigil. SDKs send OTLP to the collector via `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 ### Query
 
@@ -381,13 +395,14 @@ See `docs/references/grafana-query-response-shapes.md`.
 ## Service Responsibilities
 
 - `apps/plugin`: UI routes and backend proxy handlers for Sigil query contracts.
-- `sigil/internal/ingest/trace`: OTLP trace ingest handling and Tempo forwarding.
 - `sigil/internal/ingest/generation`: generation ingest validation and persistence coordination.
 - `sigil/internal/query`: Tempo-first query orchestration plus storage hydration and fan-out reads.
 - `sigil/internal/modelcards`: model-card catalog bootstrap, in-memory refresh loop/cache coordination, and API read semantics.
 - `sigil/internal/storage/mysql`: hot metadata/index/payload access.
 - `sigil/internal/storage/object`: compacted payload access.
   - implementation should wrap Thanos `objstore` primitives.
+- `sdks/*`: OTel traces, OTel metrics (`gen_ai.client.operation.duration`, `gen_ai.client.token.usage`, `gen_ai.client.time_to_first_token`, `gen_ai.client.tool_calls_per_operation`), and structured generation export.
+- Alloy / OTel Collector: OTLP receiver, infrastructure enrichment, trace forwarding to Tempo, metric forwarding to Prometheus.
 
 ### Runtime targets
 

@@ -20,8 +20,9 @@ audience: both
 | Tenant boundary | `exec-plans/completed/2026-02-12-phase-2-tenant-boundary.md` | Done |
 | Query proxy and envelope | `exec-plans/active/2026-02-12-phase-2-query-proxy.md` | Active |
 | Hybrid storage and query | `exec-plans/active/2026-02-12-phase-2-hybrid-storage.md` | Active |
+| SDK metrics and telemetry pipeline | `exec-plans/active/2026-02-13-sdk-metrics-and-telemetry-pipeline.md` | Active |
 
-Execution order: (1) query proxy, then (2) hybrid storage, then (3) cross-track consistency and tech debt capture. Parallel planning remains allowed within that order.
+Execution order: (1) query proxy, then (2) hybrid storage, then (3) SDK metrics and telemetry pipeline, then (4) cross-track consistency and tech debt capture. Parallel planning remains allowed within that order.
 
 ## Goal
 
