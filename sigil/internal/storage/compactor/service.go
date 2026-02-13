@@ -161,7 +161,16 @@ func (s *Service) runCompactCycle(ctx context.Context) {
 				return fmt.Errorf("write compaction block: %w", err)
 			}
 			if err := s.metadataStore.InsertBlock(ctx, built.Meta); err != nil {
-				return fmt.Errorf("insert block metadata: %w", err)
+				if !errors.Is(err, storage.ErrBlockAlreadyExists) {
+					return fmt.Errorf("insert block metadata: %w", err)
+				}
+				_ = level.Info(s.logger).Log(
+					"msg", "compactor idempotency guard reused existing block metadata",
+					"phase", compactPhase,
+					"tenant_id", tenantID,
+					"owner_id", s.ownerID,
+					"block_id", built.Block.ID,
+				)
 			}
 
 			observeCompacted(len(generations))

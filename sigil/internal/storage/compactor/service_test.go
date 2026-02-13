@@ -6,7 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/sigil/sigil/internal/config"
 	sigilv1 "github.com/grafana/sigil/sigil/internal/gen/sigil/v1"
+	"github.com/grafana/sigil/sigil/internal/storage"
 	"github.com/grafana/sigil/sigil/internal/storage/mysql"
 	"github.com/grafana/sigil/sigil/internal/storage/object"
 	"github.com/thanos-io/objstore"
@@ -181,4 +184,143 @@ func assertGenerationExists(t *testing.T, store *mysql.WALStore, tenantID, gener
 	if (count > 0) != expected {
 		t.Fatalf("expected generation %q existence=%v, got count=%d", generationID, expected, count)
 	}
+}
+
+func TestRunCompactCycleIdempotencyGuardAllowsRetryAfterFinalizeFailure(t *testing.T) {
+	base := time.Date(2026, 2, 12, 20, 0, 0, 0, time.UTC)
+	claimedGenerations := []*sigilv1.Generation{
+		testGeneration("gen-idempotency-1", "conv-idempotency", base),
+	}
+
+	claimer := &finalizeFailsOnceClaimer{generations: claimedGenerations}
+	blockWriter := &countingBlockWriter{}
+	metadataStore := &duplicateAwareMetadataStore{blocks: map[string]storage.BlockMeta{}}
+	service := &Service{
+		cfg: config.CompactorConfig{
+			CompactInterval:  time.Minute,
+			TruncateInterval: time.Minute,
+			Retention:        time.Hour,
+			BatchSize:        1000,
+			LeaseTTL:         30 * time.Second,
+		},
+		logger:        log.NewNopLogger(),
+		ownerID:       "owner-a",
+		discoverer:    fixedTenantDiscoverer{tenantID: "tenant-idempotency"},
+		leaser:        alwaysHeldLeaser{},
+		claimer:       claimer,
+		truncator:     noopTruncator{},
+		blockWriter:   blockWriter,
+		metadataStore: metadataStore,
+	}
+
+	service.runCompactCycle(context.Background())
+	if claimer.finalizeSucceeded {
+		t.Fatalf("expected first cycle finalize to fail")
+	}
+
+	service.runCompactCycle(context.Background())
+	if !claimer.finalizeSucceeded {
+		t.Fatalf("expected second cycle to succeed via idempotency guard")
+	}
+	if claimer.calls != 2 {
+		t.Fatalf("expected 2 claimer calls, got %d", claimer.calls)
+	}
+	if blockWriter.writes != 2 {
+		t.Fatalf("expected 2 block uploads across retry, got %d", blockWriter.writes)
+	}
+	if metadataStore.inserts != 2 {
+		t.Fatalf("expected 2 metadata insert attempts, got %d", metadataStore.inserts)
+	}
+	if len(metadataStore.blocks) != 1 {
+		t.Fatalf("expected exactly 1 persisted block metadata entry, got %d", len(metadataStore.blocks))
+	}
+}
+
+type fixedTenantDiscoverer struct {
+	tenantID string
+}
+
+func (d fixedTenantDiscoverer) ListTenantsForCompaction(_ context.Context, _ time.Time, _ int) ([]string, error) {
+	return []string{d.tenantID}, nil
+}
+
+func (d fixedTenantDiscoverer) ListTenantsForTruncation(_ context.Context, _ time.Time, _ int) ([]string, error) {
+	return nil, nil
+}
+
+type alwaysHeldLeaser struct{}
+
+func (alwaysHeldLeaser) AcquireLease(_ context.Context, _ string, ownerID string, ttl time.Duration) (bool, string, time.Time, error) {
+	return true, ownerID, time.Now().UTC().Add(ttl), nil
+}
+
+type noopTruncator struct{}
+
+func (noopTruncator) TruncateCompacted(_ context.Context, _ string, _ time.Time, _ int) (int64, error) {
+	return 0, nil
+}
+
+type finalizeFailsOnceClaimer struct {
+	generations       []*sigilv1.Generation
+	calls             int
+	finalizeSucceeded bool
+}
+
+func (c *finalizeFailsOnceClaimer) WithClaimedUncompacted(
+	ctx context.Context,
+	_ string,
+	_ time.Time,
+	_ int,
+	fn func(context.Context, []*sigilv1.Generation) error,
+) (int, error) {
+	c.calls++
+	if err := fn(ctx, c.generations); err != nil {
+		return 0, err
+	}
+	if c.calls == 1 {
+		return 0, errors.New("finalize failed")
+	}
+	c.finalizeSucceeded = true
+	return len(c.generations), nil
+}
+
+type countingBlockWriter struct {
+	writes int
+}
+
+func (w *countingBlockWriter) WriteBlock(_ context.Context, _ string, _ *storage.Block) error {
+	w.writes++
+	return nil
+}
+
+type duplicateAwareMetadataStore struct {
+	blocks  map[string]storage.BlockMeta
+	inserts int
+}
+
+func (m *duplicateAwareMetadataStore) InsertBlock(_ context.Context, meta storage.BlockMeta) error {
+	m.inserts++
+	key := meta.TenantID + "/" + meta.BlockID
+	if _, ok := m.blocks[key]; ok {
+		return storage.ErrBlockAlreadyExists
+	}
+	m.blocks[key] = meta
+	return nil
+}
+
+func (m *duplicateAwareMetadataStore) ListBlocks(_ context.Context, tenantID string, from, to time.Time) ([]storage.BlockMeta, error) {
+	out := make([]storage.BlockMeta, 0, len(m.blocks))
+	for _, meta := range m.blocks {
+		if meta.TenantID != tenantID {
+			continue
+		}
+		if !from.IsZero() && meta.MaxTime.Before(from) {
+			continue
+		}
+		if !to.IsZero() && meta.MinTime.After(to) {
+			continue
+		}
+		out = append(out, meta)
+	}
+	return out, nil
 }

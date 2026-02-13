@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -174,5 +175,35 @@ func TestMetadataStores(t *testing.T) {
 	}
 	if missingConversation != nil {
 		t.Fatalf("expected nil missing conversation, got %#v", missingConversation)
+	}
+}
+
+func TestInsertBlockDuplicateReturnsErrBlockAlreadyExists(t *testing.T) {
+	store, cleanup := newTestWALStore(t)
+	defer cleanup()
+
+	if err := store.AutoMigrate(context.Background()); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	rangeStart := time.Date(2026, 2, 12, 17, 0, 0, 0, time.UTC)
+	rangeEnd := time.Date(2026, 2, 12, 19, 0, 0, 0, time.UTC)
+
+	meta := storage.BlockMeta{
+		TenantID:        "tenant-a",
+		BlockID:         "block-duplicate",
+		MinTime:         rangeStart,
+		MaxTime:         rangeEnd,
+		GenerationCount: 10,
+		SizeBytes:       2048,
+		ObjectPath:      "blocks/block-duplicate/data.sigil",
+		IndexPath:       "blocks/block-duplicate/index.sigil",
+	}
+	if err := store.InsertBlock(context.Background(), meta); err != nil {
+		t.Fatalf("insert block first attempt: %v", err)
+	}
+	err := store.InsertBlock(context.Background(), meta)
+	if !errors.Is(err, storage.ErrBlockAlreadyExists) {
+		t.Fatalf("expected ErrBlockAlreadyExists, got %v", err)
 	}
 }

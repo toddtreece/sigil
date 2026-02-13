@@ -39,6 +39,10 @@ func (s *WALStore) InsertBlock(ctx context.Context, meta storage.BlockMeta) erro
 	}
 
 	if err := s.db.WithContext(ctx).Create(&model).Error; err != nil {
+		if isDuplicateKeyError(err) {
+			observeWALMetrics("insert_block_meta", "already_exists", start, 0)
+			return fmt.Errorf("%w: tenant_id=%s block_id=%s", storage.ErrBlockAlreadyExists, meta.TenantID, meta.BlockID)
+		}
 		observeWALMetrics("insert_block_meta", "error", start, 0)
 		return fmt.Errorf("insert block metadata: %w", err)
 	}
@@ -159,4 +163,15 @@ func toConversation(row ConversationModel) storage.Conversation {
 		CreatedAt:        row.CreatedAt.UTC(),
 		UpdatedAt:        row.UpdatedAt.UTC(),
 	}
+}
+
+func isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "duplicate entry") || strings.Contains(lower, "unique constraint failed")
 }

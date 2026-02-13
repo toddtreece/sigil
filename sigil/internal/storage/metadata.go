@@ -2,8 +2,11 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"time"
 )
+
+var ErrBlockAlreadyExists = errors.New("block metadata already exists")
 
 type BlockMetadataStore interface {
 	InsertBlock(ctx context.Context, meta BlockMeta) error
