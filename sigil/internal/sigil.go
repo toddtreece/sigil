@@ -85,9 +85,10 @@ func (r *Runtime) registerModules() error {
 	r.moduleInit.RegisterModule(config.TargetServer, r.initServerModule)
 	r.moduleInit.RegisterModule(config.TargetQuerier, r.initQuerierModule)
 	r.moduleInit.RegisterModule(config.TargetCompactor, r.initCompactorModule)
+	r.moduleInit.RegisterModule(config.TargetCatalogSync, r.initCatalogSyncModule)
 	r.moduleInit.RegisterModule(config.TargetAll, nil)
 
-	return r.moduleInit.AddDependency(config.TargetAll, config.TargetServer, config.TargetQuerier, config.TargetCompactor)
+	return r.moduleInit.AddDependency(config.TargetAll, config.TargetServer, config.TargetQuerier, config.TargetCompactor, config.TargetCatalogSync)
 }
 
 func (r *Runtime) initServerModule() (services.Service, error) {
@@ -177,4 +178,8 @@ func newBlockStorePlaceholder(cfg config.ObjectStoreConfig) *object.Store {
 	default:
 		return object.NewStore(cfg.S3.Endpoint, cfg.Bucket)
 	}
+}
+
+func (r *Runtime) initCatalogSyncModule() (services.Service, error) {
+	return newCatalogSyncModule(r.cfg)
 }
