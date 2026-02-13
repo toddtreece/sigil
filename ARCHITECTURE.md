@@ -341,6 +341,14 @@ See `docs/references/grafana-query-response-shapes.md`.
   - `STREAM`: streaming provider flows
 - Normalized fields are always sent:
   - model/system prompt/input/output/tools/usage/metadata/timestamps/tags
+- Request controls are first-class optional generation fields:
+  - `max_tokens`
+  - `temperature`
+  - `top_p`
+  - `tool_choice`
+  - `thinking_enabled`
+- Provider-specific thinking budget is preserved when available via metadata key:
+  - `sigil.gen_ai.request.thinking.budget_tokens`
 - Tool definitions support optional input schema JSON for transport parity (`input_schema_json` over gRPC).
 - Optional identity fields are supported end-to-end:
   - `conversation_id`

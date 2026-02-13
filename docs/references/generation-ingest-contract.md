@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-12
+last_reviewed: 2026-02-13
 source_of_truth: true
 audience: both
 ---
@@ -55,6 +55,7 @@ audience: both
   - identity: `id`, `conversation_id`, `agent_name`, `agent_version`, `trace_id`, `span_id`
   - mode: `GENERATION_MODE_SYNC` or `GENERATION_MODE_STREAM`
   - model: `provider`, `name`
+  - request controls: `max_tokens`, `temperature`, `top_p`, `tool_choice`, `thinking_enabled`
   - prompts/messages/tools/usage/metadata/timestamps/tags
   - optional `raw_artifacts[]` for debug payloads
 
@@ -112,6 +113,12 @@ audience: both
   - `gen_ai.agent.version` (Sigil extension; OTel-style naming)
   - `gen_ai.provider.name`
   - `gen_ai.request.model`
+  - `gen_ai.request.max_tokens`
+  - `gen_ai.request.temperature`
+  - `gen_ai.request.top_p`
+  - `sigil.gen_ai.request.tool_choice` (Sigil extension)
+  - `sigil.gen_ai.request.thinking.enabled` (Sigil extension)
+  - `sigil.gen_ai.request.thinking.budget_tokens` (Sigil extension; provider-specific)
   - `gen_ai.response.id`
   - `gen_ai.response.model`
   - `gen_ai.response.finish_reasons` (string array)
@@ -135,6 +142,12 @@ audience: both
     "gen_ai.operation.name": "generateText",
     "gen_ai.provider.name": "anthropic",
     "gen_ai.request.model": "claude-sonnet-4-5",
+    "gen_ai.request.max_tokens": 1024,
+    "gen_ai.request.temperature": 0.7,
+    "gen_ai.request.top_p": 0.9,
+    "sigil.gen_ai.request.tool_choice": "auto",
+    "sigil.gen_ai.request.thinking.enabled": true,
+    "sigil.gen_ai.request.thinking.budget_tokens": 2048,
     "gen_ai.response.id": "msg_1",
     "gen_ai.response.model": "claude-sonnet-4-5",
     "gen_ai.response.finish_reasons": [

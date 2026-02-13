@@ -48,6 +48,9 @@ func (a *App) handleQuery(w http.ResponseWriter, req *http.Request, path string)
 	}
 
 	upstream := strings.TrimRight(a.apiURL, "/") + path
+	if req.URL.RawQuery != "" {
+		upstream += "?" + req.URL.RawQuery
+	}
 	proxyReq, err := http.NewRequestWithContext(req.Context(), http.MethodGet, upstream, nil)
 	if err != nil {
 		writeStub(w, http.StatusInternalServerError, path, fmt.Sprintf("build request: %v", err))

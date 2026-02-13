@@ -173,6 +173,40 @@ func TestCallResourceForwardsTenantAndAuthHeaders(t *testing.T) {
 	}
 }
 
+func TestCallResourceForwardsQueryString(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "limit=10&cursor=next-token" {
+			http.Error(w, "missing query string", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"items":[]}`)
+	}))
+	defer upstream.Close()
+
+	inst, err := NewApp(context.Background(), backend.AppInstanceSettings{})
+	if err != nil {
+		t.Fatalf("new app: %s", err)
+	}
+	app := inst.(*App)
+	app.apiURL = upstream.URL
+
+	var sender mockCallResourceResponseSender
+	err = app.CallResource(context.Background(), &backend.CallResourceRequest{
+		Method: http.MethodGet,
+		Path:   "query/conversations?limit=10&cursor=next-token",
+	}, &sender)
+	if err != nil {
+		t.Fatalf("CallResource error: %s", err)
+	}
+	if sender.response == nil {
+		t.Fatal("no response received from CallResource")
+	}
+	if sender.response.Status != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, sender.response.Status)
+	}
+}
+
 func TestCallResourceReturnsNon200StubOnProxyFailures(t *testing.T) {
 	inst, err := NewApp(context.Background(), backend.AppInstanceSettings{})
 	if err != nil {
