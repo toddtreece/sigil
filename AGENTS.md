@@ -39,6 +39,7 @@
 
 - Keep KISS and DRY.
 - Build small focused components.
+- For every new or changed UI component, add or update a Storybook story.
 - Always use explicit types for props, state, and API contracts.
 - For SDK/public packages, split implementation into focused modules (types/client/transport/providers); avoid monolithic single-file runtime implementations.
 - Keep plugin code under `apps/plugin/src`.
