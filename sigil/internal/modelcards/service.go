@@ -66,6 +66,7 @@ func (s *Service) RunSyncLoop(ctx context.Context) error {
 	if s.store == nil {
 		return nil
 	}
+	s.logger.Info("model-cards sync loop started", "source", s.source.Name(), "interval", s.cfg.SyncInterval.String())
 	_, _ = s.syncOnce(ctx, "primary", false)
 
 	ticker := time.NewTicker(s.cfg.SyncInterval)
@@ -95,6 +96,7 @@ func (s *Service) syncOnce(ctx context.Context, mode string, force bool) (Refres
 		Status:    "failed",
 		StartedAt: s.now(),
 	}
+	s.logger.Info("model-cards refresh started", "source", run.Source, "mode", mode, "force", force)
 
 	now := s.now()
 	acquired, err := s.store.TryAcquireLease(ctx, refreshLeaseScopeKey, s.cfg.OwnerID, now, s.cfg.LeaseTTL)
@@ -102,6 +104,8 @@ func (s *Service) syncOnce(ctx context.Context, mode string, force bool) (Refres
 		run.ErrorSummary = err.Error()
 		run.FinishedAt = s.now()
 		_ = s.store.RecordRefreshRun(ctx, run)
+		observeRefreshMetrics(run)
+		s.logger.Error("model-cards refresh failed to acquire lease", "source", run.Source, "mode", mode, "err", err)
 		return run, err
 	}
 	if !acquired {
@@ -109,6 +113,8 @@ func (s *Service) syncOnce(ctx context.Context, mode string, force bool) (Refres
 		run.ErrorSummary = "lease not acquired"
 		run.FinishedAt = s.now()
 		_ = s.store.RecordRefreshRun(ctx, run)
+		observeRefreshMetrics(run)
+		s.logger.Debug("model-cards refresh skipped", "source", run.Source, "mode", mode, "reason", run.ErrorSummary)
 		if force {
 			return run, nil
 		}
@@ -129,14 +135,18 @@ func (s *Service) syncOnce(ctx context.Context, mode string, force bool) (Refres
 			run.ErrorSummary = fetchErr.Error()
 			run.FinishedAt = s.now()
 			_ = s.store.RecordRefreshRun(ctx, run)
+			observeRefreshMetrics(run)
+			s.logger.Error("model-cards refresh failed without fallback", "source", run.Source, "mode", mode, "err", fetchErr)
 			return run, fetchErr
 		}
 		run.RunMode = "fallback"
 		run.Status = "partial"
 		run.ErrorSummary = fetchErr.Error()
+		s.logger.Warn("model-cards refresh using snapshot fallback", "source", run.Source, "mode", mode, "err", fetchErr)
 		cards = CardsFromSnapshot(*s.snapshot, s.now())
 	} else {
 		run.Status = "success"
+		s.logger.Debug("model-cards primary source fetch succeeded", "source", run.Source, "mode", mode, "fetched_count", len(cards))
 	}
 
 	run.FetchedCount = len(cards)
@@ -146,6 +156,8 @@ func (s *Service) syncOnce(ctx context.Context, mode string, force bool) (Refres
 		run.ErrorSummary = err.Error()
 		run.FinishedAt = s.now()
 		_ = s.store.RecordRefreshRun(ctx, run)
+		observeRefreshMetrics(run)
+		s.logger.Error("model-cards refresh failed to upsert", "source", run.Source, "mode", run.RunMode, "fetched_count", run.FetchedCount, "err", err)
 		return run, err
 	}
 	if run.Status == "partial" && upserted == 0 {
@@ -156,6 +168,21 @@ func (s *Service) syncOnce(ctx context.Context, mode string, force bool) (Refres
 	if err := s.store.RecordRefreshRun(ctx, run); err != nil {
 		s.logger.Warn("record refresh run failed", "err", err)
 	}
+	observeRefreshMetrics(run)
+	s.observeCatalogState(ctx)
+	s.logger.Info(
+		"model-cards refresh completed",
+		"source",
+		run.Source,
+		"mode",
+		run.RunMode,
+		"status",
+		run.Status,
+		"fetched_count",
+		run.FetchedCount,
+		"upserted_count",
+		run.UpsertedCount,
+	)
 	return run, nil
 }
 
@@ -180,6 +207,8 @@ func (s *Service) List(ctx context.Context, params ListParams) (ListResult, erro
 			nextOffset = params.Offset + len(filtered)
 		}
 		freshness.SourcePath = path
+		observeReadPath("list", path)
+		s.observeCatalogState(ctx)
 		return ListResult{Data: filtered, HasMore: hasMore, NextOffset: nextOffset, Freshness: freshness}, nil
 	}
 
@@ -188,6 +217,8 @@ func (s *Service) List(ctx context.Context, params ListParams) (ListResult, erro
 		return ListResult{}, err
 	}
 	freshness.SourcePath = path
+	observeReadPath("list", path)
+	s.observeCatalogState(ctx)
 	return ListResult{Data: cards, HasMore: hasMore, NextOffset: params.Offset + len(cards), Freshness: freshness}, nil
 }
 
@@ -197,6 +228,8 @@ func (s *Service) Lookup(ctx context.Context, modelKey string, source string, so
 		return nil, Freshness{}, err
 	}
 	freshness.SourcePath = path
+	observeReadPath("lookup", path)
+	s.observeCatalogState(ctx)
 
 	if path == SourcePathSnapshotFallback {
 		cards := CardsFromSnapshot(*s.snapshot, s.now())
@@ -231,6 +264,10 @@ func (s *Service) SourceStatuses(ctx context.Context) ([]SourceStatus, error) {
 	if err != nil {
 		return nil, err
 	}
+	count, err := s.store.CountCards(ctx)
+	if err == nil {
+		setCatalogState(s.source.Name(), count, latestRefresh, s.now())
+	}
 	status := SourceStatus{
 		Source: s.source.Name(),
 	}
@@ -256,7 +293,10 @@ func (s *Service) readPath(ctx context.Context) (string, Freshness, error) {
 		return "", Freshness{}, err
 	}
 	if count == 0 && s.cfg.BootstrapMode == BootstrapModeSnapshotFirst && s.snapshot != nil {
-		return SourcePathSnapshotFallback, Freshness{Stale: true, SoftStale: true, HardStale: true}, nil
+		path := SourcePathSnapshotFallback
+		freshness := Freshness{Stale: true, SoftStale: true, HardStale: true}
+		s.logger.Debug("model-cards read path selected", "source_path", path, "reason", "empty-catalog", "count", count)
+		return path, freshness, nil
 	}
 
 	latest, err := s.store.LatestRefreshedAt(ctx)
@@ -265,9 +305,14 @@ func (s *Service) readPath(ctx context.Context) (string, Freshness, error) {
 	}
 	if latest == nil {
 		if s.cfg.BootstrapMode == BootstrapModeSnapshotFirst && s.snapshot != nil {
-			return SourcePathSnapshotFallback, Freshness{Stale: true, SoftStale: true, HardStale: true}, nil
+			path := SourcePathSnapshotFallback
+			freshness := Freshness{Stale: true, SoftStale: true, HardStale: true}
+			s.logger.Debug("model-cards read path selected", "source_path", path, "reason", "missing-last-refresh", "count", count)
+			return path, freshness, nil
 		}
-		return SourcePathMemoryStale, Freshness{Stale: true, SoftStale: true, HardStale: true}, nil
+		path := SourcePathMemoryStale
+		freshness := Freshness{Stale: true, SoftStale: true, HardStale: true}
+		return path, freshness, nil
 	}
 
 	age := s.now().Sub(*latest)
@@ -279,12 +324,29 @@ func (s *Service) readPath(ctx context.Context) (string, Freshness, error) {
 	}
 
 	if freshness.HardStale && s.cfg.BootstrapMode == BootstrapModeSnapshotFirst && s.snapshot != nil {
-		return SourcePathSnapshotFallback, freshness, nil
+		path := SourcePathSnapshotFallback
+		s.logger.Debug("model-cards read path selected", "source_path", path, "reason", "hard-stale-catalog", "age", age.String())
+		return path, freshness, nil
 	}
 	if freshness.Stale {
 		return SourcePathMemoryStale, freshness, nil
 	}
 	return SourcePathMemoryLive, freshness, nil
+}
+
+func (s *Service) observeCatalogState(ctx context.Context) {
+	if s.store == nil {
+		return
+	}
+	count, err := s.store.CountCards(ctx)
+	if err != nil {
+		return
+	}
+	latest, err := s.store.LatestRefreshedAt(ctx)
+	if err != nil {
+		return
+	}
+	setCatalogState(s.source.Name(), count, latest, s.now())
 }
 
 func EncodeCursor(offset int) string {

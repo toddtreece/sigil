@@ -46,9 +46,8 @@ This is the canonical navigation map for repository documentation.
     - `exec-plans/active/2026-02-12-phase-2-query-proxy.md`
     - `exec-plans/active/2026-02-12-phase-2-hybrid-storage.md`
     - `exec-plans/active/2026-02-13-compaction-scaling.md`
-  - Additional active plan:
-    - `exec-plans/active/2026-02-12-model-card-catalog-refresh.md`
   - Completed: `exec-plans/completed/`
+    - `exec-plans/completed/2026-02-12-model-card-catalog-refresh.md`
     - `exec-plans/completed/2026-02-12-phase-2-sdk-parity-python.md`
     - `exec-plans/completed/2026-02-12-phase-2-sdk-parity-typescript-javascript.md`
     - `exec-plans/completed/2026-02-13-phase-2-sdk-parity-dotnet-csharp.md`

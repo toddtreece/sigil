@@ -1,12 +1,16 @@
 ---
 owner: sigil-core
-status: active
+status: completed
 last_reviewed: 2026-02-13
 source_of_truth: true
 audience: both
 ---
 
 # Model Card Catalog Refresh and API
+
+Execution is completed and tracked in:
+
+- `docs/exec-plans/completed/2026-02-12-model-card-catalog-refresh.md`
 
 ## Problem statement
 
@@ -319,11 +323,11 @@ Refresh tooling should include:
 ## Operational concerns
 
 - Metrics:
-  - `model_cards_refresh_duration_seconds`
-  - `model_cards_refresh_success_total`
-  - `model_cards_refresh_failure_total`
-  - `model_cards_catalog_age_seconds`
-  - `model_cards_rows_total`
+  - `sigil_model_cards_refresh_runs_total` (status + mode labels)
+  - `sigil_model_cards_refresh_duration_seconds`
+  - `sigil_model_cards_catalog_age_seconds`
+  - `sigil_model_cards_catalog_rows`
+  - `sigil_model_cards_read_path_total`
 - Alerts:
   - no successful refresh in `>2h`
   - fallback mode used continuously for `>24h`

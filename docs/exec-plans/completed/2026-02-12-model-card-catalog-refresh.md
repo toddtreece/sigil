@@ -1,6 +1,6 @@
 ---
 owner: sigil-core
-status: active
+status: completed
 last_reviewed: 2026-02-13
 source_of_truth: true
 audience: both
@@ -56,12 +56,12 @@ Deliver an automated model-card catalog with external-source refresh, embedded s
 
 - [x] Add refresh/snapshot command targets via `mise` tasks for manual runs.
 - [x] Add snapshot update/check commands for fallback JSON regeneration.
-- [ ] Add metrics:
+- [x] Add metrics:
   - refresh duration
   - success/failure counters
   - catalog age
   - row count
-- [ ] Add logs for source selection and fallback usage (partial; error paths logged).
+- [x] Add logs for source selection and fallback usage.
 
 ### Phase E: Runtime targets and Helm
 
@@ -77,7 +77,7 @@ Deliver an automated model-card catalog with external-source refresh, embedded s
 - [x] Wire scheduler interval/config in runtime config.
 - [x] Enable in dev compose and verify end-to-end behavior.
 - [x] Update docs index entries and design status as implementation lands.
-- [ ] Capture deferred items in `docs/exec-plans/tech-debt-tracker.md` if needed.
+- [x] Capture deferred items in `docs/exec-plans/tech-debt-tracker.md` if needed (none required for this phase).
 
 ## Risks
 
