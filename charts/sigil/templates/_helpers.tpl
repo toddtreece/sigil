@@ -107,9 +107,9 @@ tempo:4318
 {{- end -}}
 {{- end -}}
 
-{{- define "sigil.objectStore.endpoint" -}}
-{{- if .Values.sigil.objectStore.endpoint -}}
-{{- .Values.sigil.objectStore.endpoint -}}
+{{- define "sigil.objectStore.s3Endpoint" -}}
+{{- if .Values.sigil.objectStore.s3.endpoint -}}
+{{- .Values.sigil.objectStore.s3.endpoint -}}
 {{- else if .Values.minio.enabled -}}
 {{- printf "http://%s:%v" (include "sigil.minio.fullname" .) .Values.minio.service.apiPort -}}
 {{- else -}}

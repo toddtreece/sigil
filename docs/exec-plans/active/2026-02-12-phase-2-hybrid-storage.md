@@ -64,14 +64,14 @@ Deliver durable generation storage with hot WAL writes, background object-storag
 
 ### Phase C: Compactor service
 
-- [ ] Implement compactor `services.Service` with compact loop + truncate loop.
-- [ ] Implement tenant leaser using `compactor_leases`.
-- [ ] Implement compact flow: claim -> build -> upload -> metadata insert -> mark compacted.
-- [ ] Implement truncate flow: batched deletes for compacted rows older than retention.
-- [ ] Add compactor metrics and structured logging.
-- [ ] Add unit tests for lease expiry/reclaim and concurrency behavior.
-- [ ] Add integration tests for concurrent compactors and truncation safety.
-- [ ] Wire compactor into dskit module manager target graph.
+- [x] Implement compactor `services.Service` with compact loop + truncate loop.
+- [x] Implement tenant leaser using `compactor_leases`.
+- [x] Implement compact flow: claim -> build -> upload -> metadata insert -> mark compacted.
+- [x] Implement truncate flow: batched deletes for compacted rows older than retention.
+- [x] Add compactor metrics and structured logging.
+- [x] Add unit tests for lease expiry/reclaim and concurrency behavior.
+- [x] Add integration tests for concurrent compactors and truncation safety.
+- [x] Wire compactor into dskit module manager target graph.
 
 ### Phase D: Fan-out query path
 

@@ -68,12 +68,12 @@ dir = "apps/plugin"
 run = "pnpm run storybook"
 
 [tasks.up]
-description = "Start local stack (grafana, plugin, sigil, tempo, mysql)"
+description = "Start local stack (grafana, plugin, sigil, tempo, mysql, minio)"
 run = "docker compose --profile core up --build"
 
 [tasks."up:object"]
-description = "Start local stack with optional object storage profile"
-run = "docker compose --profile core --profile object up --build"
+description = "Backward-compatible alias for `mise run up`"
+run = "docker compose --profile core up --build"
 
 [tasks.down]
 description = "Stop local stack"
@@ -211,10 +211,26 @@ helm template sigil ./charts/sigil \
   --set sigil.storage.mysql.dsn='sigil:sigil@tcp(mysql.example:3306)/sigil?parseTime=true' \
   --set sigil.tempo.grpcEndpoint='tempo.example:4317' \
   --set sigil.tempo.httpEndpoint='tempo.example:4318' \
-  --set sigil.objectStore.endpoint='https://object-store.example' >/dev/null
+  --set sigil.objectStore.backend='s3' \
+  --set sigil.objectStore.bucket='sigil' \
+  --set sigil.objectStore.s3.endpoint='https://object-store.example' >/dev/null
 
 helm template sigil ./charts/sigil \
   --set minio.enabled=true >/dev/null
+
+helm template sigil ./charts/sigil \
+  --set minio.enabled=false \
+  --set sigil.objectStore.backend='gcs' \
+  --set sigil.objectStore.bucket='sigil-gcs' \
+  --set sigil.objectStore.gcs.bucket='sigil-gcs' >/dev/null
+
+helm template sigil ./charts/sigil \
+  --set minio.enabled=false \
+  --set sigil.objectStore.backend='azure' \
+  --set sigil.objectStore.bucket='sigil' \
+  --set sigil.objectStore.azure.container='sigil' \
+  --set sigil.objectStore.azure.storageAccountName='account' \
+  --set sigil.objectStore.azure.storageAccountKey='secret' >/dev/null
 """
 
 [tasks."package:helm"]

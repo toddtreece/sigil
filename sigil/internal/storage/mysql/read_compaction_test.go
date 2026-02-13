@@ -66,16 +66,19 @@ func TestWALCompactionAndTruncation(t *testing.T) {
 		testGeneration("gen-compact-3", "conv-compact", base.Add(4*time.Minute)),
 	}))
 
-	claimed, err := store.ClaimUncompacted(context.Background(), "tenant-a", base.Add(10*time.Minute), 2)
+	claimed, err := store.WithClaimedUncompacted(context.Background(), "tenant-a", base.Add(10*time.Minute), 2,
+		func(_ context.Context, generations []*sigilv1.Generation) error {
+			if len(generations) != 2 {
+				t.Fatalf("expected 2 claimed rows, got %d", len(generations))
+			}
+			return nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("claim uncompacted: %v", err)
 	}
-	if len(claimed) != 2 {
-		t.Fatalf("expected 2 claimed rows, got %d", len(claimed))
-	}
-
-	if err := store.MarkCompacted(context.Background(), "tenant-a", []string{claimed[0].GetId(), claimed[1].GetId()}); err != nil {
-		t.Fatalf("mark compacted: %v", err)
+	if claimed != 2 {
+		t.Fatalf("expected 2 claimed rows, got %d", claimed)
 	}
 
 	deletedRows, err := store.TruncateCompacted(context.Background(), "tenant-a", time.Now().UTC().Add(time.Hour), 1)

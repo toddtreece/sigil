@@ -80,9 +80,28 @@ sigil:
     grpcEndpoint: ""
     httpEndpoint: ""
   objectStore:
-    # Override endpoint when using external object storage.
-    endpoint: ""
+    backend: s3
     bucket: sigil
+    s3:
+      # Leave empty to auto-wire in-cluster MinIO when minio.enabled=true.
+      endpoint: ""
+      region: ""
+      insecure: true
+      useAWSSDKAuth: false
+      # Optional explicit credentials; leave empty to use MinIO defaults for local chart installs.
+      accessKey: ""
+      secretKey: ""
+    gcs:
+      bucket: ""
+      serviceAccount: ""
+      useGRPC: false
+    azure:
+      container: ""
+      storageAccountName: ""
+      storageAccountKey: ""
+      storageConnectionString: ""
+      endpoint: blob.core.windows.net
+      createContainer: true
   compactor:
     compactInterval: 1m
     truncateInterval: 5m
@@ -174,7 +193,8 @@ tempo:
       defaults: {}
 
 minio:
-  enabled: false
+  # Enabled by default so Helm installs work out of the box with object storage.
+  enabled: true
   image:
     repository: minio/minio
     tag: "RELEASE.2025-01-20T14-49-07Z"

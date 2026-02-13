@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-12
+last_reviewed: 2026-02-13
 source_of_truth: true
 audience: both
 ---
@@ -75,15 +75,76 @@ Tenant boundary completion is tracked in:
 ## Query Model
 
 - Tempo is the primary backend for trace search and TraceQL-based metrics workflows.
-- Sigil query services hydrate generation and conversation payloads/metadata from Sigil storage.
+- Query fan-out hydration from MySQL/object storage is the Phase D target.
+- Current `sigil/internal/query` implementation is still placeholder/bootstrap.
 - Query access from the plugin frontend is plugin-proxy-only.
 
 ### Query access path
 
 1. Frontend sends query request to plugin backend resource endpoint.
 2. Plugin backend applies tenant header behavior and forwards to Sigil API query endpoint.
-3. Sigil API queries Tempo first and performs storage hydration/fan-out reads as needed.
+3. Sigil API query path:
+   - current: placeholder response path
+   - target: Tempo query + storage hydration/fan-out reads
 4. Sigil API returns Grafana-compatible query envelope and frames.
+
+## Runtime Read/Write Paths
+
+### Write path (implemented)
+
+Write path components:
+
+1. Client SDKs export generations directly to Sigil generation ingest (`/api/v1/generations:export` or gRPC).
+2. Sigil tenant/auth middleware resolves tenant context.
+3. Generation ingest service validates payloads and writes:
+   - `generations` rows (hot payload + compaction cursor state)
+   - `conversations` projection rows.
+4. Client SDKs also export OTLP traces to Sigil OTLP ingest.
+5. Sigil trace ingest forwards OTLP to Tempo.
+6. Compactor target reads MySQL generations, writes object blocks + metadata, then marks/truncates compacted rows.
+
+```mermaid
+flowchart LR
+    A["Client SDKs"] -->|"generation export"| B["Sigil Generation Ingest"]
+    B --> C["Tenant/Auth middleware"]
+    C --> D["Generation service"]
+    D --> E["MySQL: generations"]
+    D --> F["MySQL: conversations"]
+    A -->|"OTLP traces"| G["Sigil Trace Ingest"]
+    G --> H["Tenant/Auth middleware"]
+    H --> I["Tempo client"]
+    I --> J["Tempo"]
+    E --> K["Compactor target"]
+    K --> L["Object store: data.sigil/index.sigil"]
+    K --> M["MySQL: compaction_blocks"]
+    K --> E
+```
+
+### Read path (current vs target)
+
+Read path components:
+
+1. Grafana plugin frontend calls plugin backend resource routes.
+2. Plugin backend adds tenant context and forwards to Sigil query API.
+3. Current query backend is placeholder/bootstrap.
+4. Phase D target query backend fan-out:
+   - Tempo for trace search/detail
+   - MySQL hot rows (`generations`, `conversations`)
+   - MySQL block catalog (`compaction_blocks`)
+   - object storage blocks (`data.sigil`, `index.sigil`)
+   - union + dedupe by `generation_id` with hot-row preference.
+
+```mermaid
+flowchart LR
+    A["Grafana plugin frontend"] --> B["Plugin backend proxy"]
+    B --> C["Sigil Query API"]
+    C -->|"current"| D["Placeholder query service"]
+    C -.->|"Phase D target"| E["Tempo"]
+    C -.->|"Phase D target"| F["MySQL: generations + conversations"]
+    C -.->|"Phase D target"| G["MySQL: compaction_blocks"]
+    C -.->|"Phase D target"| H["Object storage blocks"]
+    C -.->|"Phase D target: merge + dedupe"| I["Grafana query frames"]
+```
 
 ## Tenant/Auth Model
 
@@ -125,6 +186,79 @@ MySQL is not only an ingest log. It stores:
 Query reads fan out to hot and cold stores, union results, and dedupe by `generation_id`.
 
 - overlap conflict policy: prefer hot MySQL row
+
+### Hybrid storage data flow (current compaction + target query fan-out)
+
+```mermaid
+flowchart LR
+    A["SDKs / Client Apps"] -->|"OTLP traces"| B["Sigil Trace Ingest"]
+    A -->|"Generation export"| C["Sigil Generation Ingest"]
+    B -->|"OTLP forward"| D["Tempo"]
+    C -->|"insert rows + conversation projection"| E["MySQL: generations + conversations"]
+    E -->|"discover tenants + claim batches"| F["Compactor Service (N instances)"]
+    F -->|"upload data.sigil + index.sigil"| G["Object Storage (S3, GCS, Azure, MinIO)"]
+    F -->|"insert block metadata"| H["MySQL: compaction_blocks"]
+    F -->|"mark compacted + truncate old compacted rows"| E
+    I["Plugin Query API"] -.->|"Phase D target: fan-out reads"| E
+    I -.->|"Phase D target: list/read block metadata"| H
+    I -.->|"Phase D target: read block objects"| G
+    I -.->|"Phase D target: trace query"| D
+```
+
+### Distributed compactor topology
+
+```mermaid
+flowchart TB
+    subgraph R["Compactor Replicas"]
+        A["Compactor A"]
+        B["Compactor B"]
+        C["Compactor C"]
+    end
+    A --> L["MySQL: compactor_leases"]
+    B --> L
+    C --> L
+    L --> O["Single active owner per tenant lease key"]
+    O --> X["Tx claim rows: SELECT ... FOR UPDATE SKIP LOCKED"]
+    X --> G["MySQL: generations"]
+    O --> M["MySQL: compaction_blocks"]
+    O --> S["Object Storage"]
+```
+
+### Compaction transaction flow
+
+```mermaid
+sequenceDiagram
+    participant C as Compactor owner
+    participant DB as MySQL
+    participant O as Object Storage
+    C->>DB: ListTenantsForCompaction(now, limit)
+    C->>DB: AcquireLease(tenant, owner_id, ttl)
+    alt Lease held
+        C->>DB: BEGIN
+        C->>DB: SELECT ... FOR UPDATE SKIP LOCKED (limit=batch)
+        DB-->>C: claimed generations
+        C->>O: Upload block data + index objects
+        C->>DB: INSERT compaction_blocks
+        C->>DB: UPDATE generations SET compacted=true, compacted_at=NOW(6)
+        C->>DB: COMMIT
+    else Lease denied
+        C-->>C: Skip tenant this cycle
+    end
+```
+
+### Compactor scaling characteristics (current implementation)
+
+- Compaction scales horizontally across tenants by running multiple compactor instances.
+- Per tenant, work is serialized:
+  - lease ownership is single-writer (`compactor_leases` row per tenant)
+  - claim path uses one transaction with `FOR UPDATE SKIP LOCKED`
+- Current compact loop processes at most one claim batch per tenant per cycle.
+- Truncate loop is batched but drains repeatedly in one cycle (`while deleted == batchSize`).
+- Net effect:
+  - many-tenant workloads scale well with more compactor replicas
+  - one very hot tenant is limited by single-owner, single-batch-per-cycle behavior
+- Recorded debt for later improvement:
+  - move from long transaction claim pattern to durable schema-based claim state.
 
 ## API Contracts
 

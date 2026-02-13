@@ -11,6 +11,52 @@ func TestFromEnvDefaultsTargetToAll(t *testing.T) {
 	}
 }
 
+func TestFromEnvDefaultsObjectStoreAuth(t *testing.T) {
+	t.Setenv("SIGIL_OBJECT_STORE_S3_AWS_SDK_AUTH", "")
+	t.Setenv("SIGIL_OBJECT_STORE_ACCESS_KEY", "")
+	t.Setenv("SIGIL_OBJECT_STORE_SECRET_KEY", "")
+	t.Setenv("SIGIL_OBJECT_STORE_INSECURE", "")
+
+	cfg := FromEnv()
+	if cfg.ObjectStore.S3.AccessKey != "minioadmin" {
+		t.Fatalf("expected default object store access key, got %q", cfg.ObjectStore.S3.AccessKey)
+	}
+	if cfg.ObjectStore.S3.SecretKey != "minioadmin" {
+		t.Fatalf("expected default object store secret key, got %q", cfg.ObjectStore.S3.SecretKey)
+	}
+	if !cfg.ObjectStore.S3.Insecure {
+		t.Fatalf("expected default object store insecure=true")
+	}
+}
+
+func TestFromEnvDefaultsObjectStoreAuthForAWSSDKAuth(t *testing.T) {
+	t.Setenv("SIGIL_OBJECT_STORE_S3_AWS_SDK_AUTH", "true")
+	t.Setenv("SIGIL_OBJECT_STORE_ACCESS_KEY", "")
+	t.Setenv("SIGIL_OBJECT_STORE_SECRET_KEY", "")
+
+	cfg := FromEnv()
+	if cfg.ObjectStore.S3.AccessKey != "" {
+		t.Fatalf("expected empty object store access key when sdk auth is enabled, got %q", cfg.ObjectStore.S3.AccessKey)
+	}
+	if cfg.ObjectStore.S3.SecretKey != "" {
+		t.Fatalf("expected empty object store secret key when sdk auth is enabled, got %q", cfg.ObjectStore.S3.SecretKey)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected sdk auth object store config to validate, got %v", err)
+	}
+}
+
+func TestValidateRejectsStaticCredentialsWhenAWSSDKAuthEnabled(t *testing.T) {
+	cfg := FromEnv()
+	cfg.ObjectStore.S3.UseAWSSDKAuth = true
+	cfg.ObjectStore.S3.AccessKey = "minioadmin"
+	cfg.ObjectStore.S3.SecretKey = "minioadmin"
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatalf("expected validation error when sdk auth and static credentials are both set")
+	}
+}
+
 func TestValidateRejectsInvalidTarget(t *testing.T) {
 	cfg := FromEnv()
 	cfg.Target = "invalid"
@@ -26,6 +72,31 @@ func TestValidateRejectsInvalidCompactorConfig(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatalf("expected validation error for invalid compactor config")
+	}
+}
+
+func TestValidateRejectsInvalidObjectStoreConfig(t *testing.T) {
+	cfg := FromEnv()
+	cfg.ObjectStore.Backend = "azure"
+	cfg.ObjectStore.Azure.StorageAccountName = ""
+	cfg.ObjectStore.Azure.StorageAccountKey = ""
+	cfg.ObjectStore.Azure.StorageConnectionString = ""
+	cfg.ObjectStore.Azure.ContainerName = ""
+	cfg.ObjectStore.Bucket = ""
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatalf("expected validation error for invalid object store config")
+	}
+}
+
+func TestValidateAcceptsGCSBackend(t *testing.T) {
+	cfg := FromEnv()
+	cfg.ObjectStore.Backend = "gcs"
+	cfg.ObjectStore.Bucket = ""
+	cfg.ObjectStore.GCS.Bucket = "sigil-gcs"
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected gcs object store config to validate, got %v", err)
 	}
 }
 

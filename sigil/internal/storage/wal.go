@@ -16,11 +16,6 @@ type WALReader interface {
 	GetByConversationID(ctx context.Context, tenantID, conversationID string) ([]*sigilv1.Generation, error)
 }
 
-type WALCompactor interface {
-	ClaimUncompacted(ctx context.Context, tenantID string, olderThan time.Time, limit int) ([]*sigilv1.Generation, error)
-	MarkCompacted(ctx context.Context, tenantID string, generationIDs []string) error
-}
-
 type WALTruncator interface {
 	TruncateCompacted(ctx context.Context, tenantID string, olderThan time.Time, limit int) (int64, error)
 }

@@ -100,8 +100,7 @@ func (s *Store) WriteBlock(ctx context.Context, tenantID string, block *storage.
 		return fmt.Errorf("encode block %q: %w", block.ID, err)
 	}
 
-	dataPath := blockPath(tenantID, block.ID, dataFileName)
-	indexPath := blockPath(tenantID, block.ID, indexFileName)
+	dataPath, indexPath := BlockObjectPaths(tenantID, block.ID)
 
 	if err := bucket.Upload(ctx, dataPath, bytes.NewReader(dataBytes)); err != nil {
 		observeBlockMetrics("write_block", "error", start, 0, "write")
@@ -249,6 +248,10 @@ func (s *Store) getBucket() (objstore.Bucket, error) {
 
 func blockPath(tenantID, blockID, filename string) string {
 	return fmt.Sprintf("%s/blocks/%s/%s", tenantID, blockID, filename)
+}
+
+func BlockObjectPaths(tenantID, blockID string) (dataPath, indexPath string) {
+	return blockPath(tenantID, blockID, dataFileName), blockPath(tenantID, blockID, indexFileName)
 }
 
 func observeBlockMetrics(op, status string, start time.Time, bytes int64, direction string) {

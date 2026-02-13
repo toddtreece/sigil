@@ -26,9 +26,40 @@ type Config struct {
 	TempoOTLPHTTPEndpoint string
 	StorageBackend        string
 	MySQLDSN              string
-	ObjectStoreEndpoint   string
-	ObjectStoreBucket     string
+	ObjectStore           ObjectStoreConfig
 	CompactorConfig       CompactorConfig
+}
+
+type ObjectStoreConfig struct {
+	Backend string
+	Bucket  string
+	S3      ObjectStoreS3Config
+	GCS     ObjectStoreGCSConfig
+	Azure   ObjectStoreAzureConfig
+}
+
+type ObjectStoreS3Config struct {
+	Endpoint      string
+	Region        string
+	AccessKey     string
+	SecretKey     string
+	Insecure      bool
+	UseAWSSDKAuth bool
+}
+
+type ObjectStoreGCSConfig struct {
+	Bucket         string
+	ServiceAccount string
+	UseGRPC        bool
+}
+
+type ObjectStoreAzureConfig struct {
+	ContainerName           string
+	StorageAccountName      string
+	StorageAccountKey       string
+	StorageConnectionString string
+	Endpoint                string
+	CreateContainer         bool
 }
 
 type CompactorConfig struct {
@@ -40,6 +71,14 @@ type CompactorConfig struct {
 }
 
 func FromEnv() Config {
+	useAWSSDKAuth := getEnvBool("SIGIL_OBJECT_STORE_S3_AWS_SDK_AUTH", false)
+	defaultAccessKey := "minioadmin"
+	defaultSecretKey := "minioadmin"
+	if useAWSSDKAuth {
+		defaultAccessKey = ""
+		defaultSecretKey = ""
+	}
+
 	return Config{
 		HTTPAddr:              getEnv("SIGIL_HTTP_ADDR", ":8080"),
 		OTLPGRPCAddr:          getEnv("SIGIL_OTLP_GRPC_ADDR", ":4317"),
@@ -51,8 +90,31 @@ func FromEnv() Config {
 		TempoOTLPHTTPEndpoint: getEnv("SIGIL_TEMPO_OTLP_HTTP_ENDPOINT", "tempo:4318"),
 		StorageBackend:        getEnv("SIGIL_STORAGE_BACKEND", "mysql"),
 		MySQLDSN:              getEnv("SIGIL_MYSQL_DSN", "sigil:sigil@tcp(mysql:3306)/sigil?parseTime=true"),
-		ObjectStoreEndpoint:   getEnv("SIGIL_OBJECT_STORE_ENDPOINT", "http://minio:9000"),
-		ObjectStoreBucket:     getEnv("SIGIL_OBJECT_STORE_BUCKET", "sigil"),
+		ObjectStore: ObjectStoreConfig{
+			Backend: strings.ToLower(strings.TrimSpace(getEnv("SIGIL_OBJECT_STORE_BACKEND", "s3"))),
+			Bucket:  getEnv("SIGIL_OBJECT_STORE_BUCKET", "sigil"),
+			S3: ObjectStoreS3Config{
+				Endpoint:      getEnv("SIGIL_OBJECT_STORE_ENDPOINT", "http://minio:9000"),
+				Region:        getEnv("SIGIL_OBJECT_STORE_S3_REGION", ""),
+				AccessKey:     getEnv("SIGIL_OBJECT_STORE_ACCESS_KEY", defaultAccessKey),
+				SecretKey:     getEnv("SIGIL_OBJECT_STORE_SECRET_KEY", defaultSecretKey),
+				Insecure:      getEnvBool("SIGIL_OBJECT_STORE_INSECURE", true),
+				UseAWSSDKAuth: useAWSSDKAuth,
+			},
+			GCS: ObjectStoreGCSConfig{
+				Bucket:         getEnv("SIGIL_OBJECT_STORE_GCS_BUCKET", ""),
+				ServiceAccount: getEnv("SIGIL_OBJECT_STORE_GCS_SERVICE_ACCOUNT", ""),
+				UseGRPC:        getEnvBool("SIGIL_OBJECT_STORE_GCS_USE_GRPC", false),
+			},
+			Azure: ObjectStoreAzureConfig{
+				ContainerName:           getEnv("SIGIL_OBJECT_STORE_AZURE_CONTAINER", ""),
+				StorageAccountName:      getEnv("SIGIL_OBJECT_STORE_AZURE_STORAGE_ACCOUNT", ""),
+				StorageAccountKey:       getEnv("SIGIL_OBJECT_STORE_AZURE_STORAGE_ACCOUNT_KEY", ""),
+				StorageConnectionString: getEnv("SIGIL_OBJECT_STORE_AZURE_STORAGE_CONNECTION_STRING", ""),
+				Endpoint:                getEnv("SIGIL_OBJECT_STORE_AZURE_ENDPOINT", "blob.core.windows.net"),
+				CreateContainer:         getEnvBool("SIGIL_OBJECT_STORE_AZURE_CREATE_CONTAINER", true),
+			},
+		},
 		CompactorConfig: CompactorConfig{
 			CompactInterval:  getEnvDuration("SIGIL_COMPACTOR_COMPACT_INTERVAL", time.Minute),
 			TruncateInterval: getEnvDuration("SIGIL_COMPACTOR_TRUNCATE_INTERVAL", 5*time.Minute),
@@ -88,6 +150,55 @@ func (c Config) Validate() error {
 	}
 	if c.CompactorConfig.LeaseTTL <= 0 {
 		return fmt.Errorf("SIGIL_COMPACTOR_LEASE_TTL must be > 0")
+	}
+	if err := c.ObjectStore.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c ObjectStoreConfig) Validate() error {
+	backend := strings.ToLower(strings.TrimSpace(c.Backend))
+	switch backend {
+	case "s3":
+		if strings.TrimSpace(c.Bucket) == "" {
+			return fmt.Errorf("SIGIL_OBJECT_STORE_BUCKET must be set for s3 backend")
+		}
+		if strings.TrimSpace(c.S3.Endpoint) == "" {
+			return fmt.Errorf("SIGIL_OBJECT_STORE_ENDPOINT must be set for s3 backend")
+		}
+		if c.S3.UseAWSSDKAuth {
+			if strings.TrimSpace(c.S3.AccessKey) != "" || strings.TrimSpace(c.S3.SecretKey) != "" {
+				return fmt.Errorf("SIGIL_OBJECT_STORE_ACCESS_KEY/SECRET_KEY must be empty when SIGIL_OBJECT_STORE_S3_AWS_SDK_AUTH=true")
+			}
+		} else {
+			if strings.TrimSpace(c.S3.AccessKey) == "" && strings.TrimSpace(c.S3.SecretKey) != "" {
+				return fmt.Errorf("SIGIL_OBJECT_STORE_ACCESS_KEY is required when SIGIL_OBJECT_STORE_SECRET_KEY is set")
+			}
+			if strings.TrimSpace(c.S3.AccessKey) != "" && strings.TrimSpace(c.S3.SecretKey) == "" {
+				return fmt.Errorf("SIGIL_OBJECT_STORE_SECRET_KEY is required when SIGIL_OBJECT_STORE_ACCESS_KEY is set")
+			}
+		}
+	case "gcs":
+		if strings.TrimSpace(c.GCS.Bucket) == "" && strings.TrimSpace(c.Bucket) == "" {
+			return fmt.Errorf("SIGIL_OBJECT_STORE_BUCKET or SIGIL_OBJECT_STORE_GCS_BUCKET must be set for gcs backend")
+		}
+	case "azure":
+		if strings.TrimSpace(c.Azure.ContainerName) == "" && strings.TrimSpace(c.Bucket) == "" {
+			return fmt.Errorf("SIGIL_OBJECT_STORE_BUCKET or SIGIL_OBJECT_STORE_AZURE_CONTAINER must be set for azure backend")
+		}
+		if strings.TrimSpace(c.Azure.StorageAccountName) == "" {
+			return fmt.Errorf("SIGIL_OBJECT_STORE_AZURE_STORAGE_ACCOUNT must be set for azure backend")
+		}
+		if strings.TrimSpace(c.Azure.StorageAccountKey) == "" && strings.TrimSpace(c.Azure.StorageConnectionString) == "" {
+			return fmt.Errorf("SIGIL_OBJECT_STORE_AZURE_STORAGE_ACCOUNT_KEY or SIGIL_OBJECT_STORE_AZURE_STORAGE_CONNECTION_STRING must be set for azure backend")
+		}
+		if strings.TrimSpace(c.Azure.StorageAccountKey) != "" && strings.TrimSpace(c.Azure.StorageConnectionString) != "" {
+			return fmt.Errorf("SIGIL_OBJECT_STORE_AZURE_STORAGE_ACCOUNT_KEY and SIGIL_OBJECT_STORE_AZURE_STORAGE_CONNECTION_STRING are mutually exclusive")
+		}
+	default:
+		return fmt.Errorf("invalid object store backend %q", c.Backend)
 	}
 
 	return nil

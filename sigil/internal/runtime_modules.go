@@ -3,17 +3,15 @@ package sigil
 import (
 	"context"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/sigil/sigil/internal/config"
 	"github.com/grafana/sigil/sigil/internal/storage"
+	compactorstorage "github.com/grafana/sigil/sigil/internal/storage/compactor"
 )
 
 type querierModule struct {
 	blockReader storage.BlockReader
-}
-
-type compactorModule struct {
-	blockWriter storage.BlockWriter
 }
 
 func newQuerierModule(blockReader storage.BlockReader) services.Service {
@@ -28,14 +26,16 @@ func (m *querierModule) start(_ context.Context) error {
 	return nil
 }
 
-func newCompactorModule(blockWriter storage.BlockWriter) services.Service {
-	module := &compactorModule{
-		blockWriter: blockWriter,
-	}
-	return services.NewIdleService(module.start, nil).WithName(config.TargetCompactor)
-}
-
-func (m *compactorModule) start(_ context.Context) error {
-	_ = m.blockWriter
-	return nil
+func newCompactorModule(
+	cfg config.CompactorConfig,
+	logger log.Logger,
+	ownerID string,
+	discoverer compactorstorage.TenantDiscoverer,
+	leaser compactorstorage.TenantLeaser,
+	claimer compactorstorage.TransactionalClaimer,
+	truncator compactorstorage.Truncator,
+	blockWriter storage.BlockWriter,
+	metadataStore storage.BlockMetadataStore,
+) services.Service {
+	return compactorstorage.NewService(cfg, logger, ownerID, discoverer, leaser, claimer, truncator, blockWriter, metadataStore)
 }

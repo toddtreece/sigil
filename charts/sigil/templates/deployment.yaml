@@ -75,10 +75,56 @@ spec:
             - name: SIGIL_MYSQL_DSN
               value: {{ include "sigil.mysql.dsn" . | quote }}
             {{- end }}
-            - name: SIGIL_OBJECT_STORE_ENDPOINT
-              value: {{ include "sigil.objectStore.endpoint" . | quote }}
+            - name: SIGIL_OBJECT_STORE_BACKEND
+              value: {{ .Values.sigil.objectStore.backend | lower | quote }}
             - name: SIGIL_OBJECT_STORE_BUCKET
               value: {{ .Values.sigil.objectStore.bucket | quote }}
+            - name: SIGIL_OBJECT_STORE_ENDPOINT
+              value: {{ include "sigil.objectStore.s3Endpoint" . | quote }}
+            - name: SIGIL_OBJECT_STORE_S3_REGION
+              value: {{ .Values.sigil.objectStore.s3.region | quote }}
+            - name: SIGIL_OBJECT_STORE_INSECURE
+              value: {{ ternary "true" "false" .Values.sigil.objectStore.s3.insecure | quote }}
+            - name: SIGIL_OBJECT_STORE_S3_AWS_SDK_AUTH
+              value: {{ ternary "true" "false" .Values.sigil.objectStore.s3.useAWSSDKAuth | quote }}
+            {{- if .Values.sigil.objectStore.s3.accessKey }}
+            - name: SIGIL_OBJECT_STORE_ACCESS_KEY
+              value: {{ .Values.sigil.objectStore.s3.accessKey | quote }}
+            {{- else if and .Values.minio.enabled (eq (lower .Values.sigil.objectStore.backend) "s3") }}
+            - name: SIGIL_OBJECT_STORE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sigil.minio.secretName" . }}
+                  key: {{ .Values.minio.secretKeys.rootUser }}
+            {{- end }}
+            {{- if .Values.sigil.objectStore.s3.secretKey }}
+            - name: SIGIL_OBJECT_STORE_SECRET_KEY
+              value: {{ .Values.sigil.objectStore.s3.secretKey | quote }}
+            {{- else if and .Values.minio.enabled (eq (lower .Values.sigil.objectStore.backend) "s3") }}
+            - name: SIGIL_OBJECT_STORE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sigil.minio.secretName" . }}
+                  key: {{ .Values.minio.secretKeys.rootPassword }}
+            {{- end }}
+            - name: SIGIL_OBJECT_STORE_GCS_BUCKET
+              value: {{ .Values.sigil.objectStore.gcs.bucket | quote }}
+            - name: SIGIL_OBJECT_STORE_GCS_SERVICE_ACCOUNT
+              value: {{ .Values.sigil.objectStore.gcs.serviceAccount | quote }}
+            - name: SIGIL_OBJECT_STORE_GCS_USE_GRPC
+              value: {{ ternary "true" "false" .Values.sigil.objectStore.gcs.useGRPC | quote }}
+            - name: SIGIL_OBJECT_STORE_AZURE_CONTAINER
+              value: {{ .Values.sigil.objectStore.azure.container | quote }}
+            - name: SIGIL_OBJECT_STORE_AZURE_STORAGE_ACCOUNT
+              value: {{ .Values.sigil.objectStore.azure.storageAccountName | quote }}
+            - name: SIGIL_OBJECT_STORE_AZURE_STORAGE_ACCOUNT_KEY
+              value: {{ .Values.sigil.objectStore.azure.storageAccountKey | quote }}
+            - name: SIGIL_OBJECT_STORE_AZURE_STORAGE_CONNECTION_STRING
+              value: {{ .Values.sigil.objectStore.azure.storageConnectionString | quote }}
+            - name: SIGIL_OBJECT_STORE_AZURE_ENDPOINT
+              value: {{ .Values.sigil.objectStore.azure.endpoint | quote }}
+            - name: SIGIL_OBJECT_STORE_AZURE_CREATE_CONTAINER
+              value: {{ ternary "true" "false" .Values.sigil.objectStore.azure.createContainer | quote }}
             - name: SIGIL_COMPACTOR_COMPACT_INTERVAL
               value: {{ .Values.sigil.compactor.compactInterval | quote }}
             - name: SIGIL_COMPACTOR_TRUNCATE_INTERVAL

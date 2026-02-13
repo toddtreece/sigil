@@ -10,6 +10,22 @@ Sigil is an open-source AI observability project from Grafana.
 
 It combines OpenTelemetry traces with normalized LLM generation data, so you can inspect conversations, completions, and traces in one place.
 
+## What You Get
+
+- Grafana app plugin (`/apps/plugin`) for conversations, completions, traces, and settings.
+- Go service (`/sigil`) for ingest and query:
+  - OTLP gRPC `:4317`
+  - OTLP HTTP `:4318/v1/traces`
+  - Generation ingest and query APIs on `:8080`
+- Tempo (docker compose) as trace storage.
+- MySQL as default metadata and record-reference storage.
+- Object storage for compacted payloads:
+  - MinIO (default local/core profile)
+  - AWS S3
+  - Google Cloud Storage
+  - Azure Blob Storage
+- SDKs (`/sdks`) with Go started first, Python/JS scaffolds present.
+
 ## Why Sigil
 
 - **Trace + generation correlation**: connect model calls, tool executions, and request traces.
@@ -59,13 +75,7 @@ mise run deps
 mise run up
 ```
 
-This starts Grafana, the Sigil app plugin, the Sigil API service, Tempo, and MySQL.
-
-If you also want object storage locally:
-
-```bash
-mise run up:object
-```
+This starts Grafana, the Sigil app plugin, the Sigil API service, Tempo, MySQL, and MinIO.
 
 ### 4. Open the Sigil app
 

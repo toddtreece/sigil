@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/sigil/sigil/internal/config"
+	"github.com/grafana/sigil/sigil/internal/storage/mysql"
 	"github.com/grafana/sigil/sigil/internal/storage/object"
 )
 
@@ -92,11 +95,86 @@ func (r *Runtime) initServerModule() (services.Service, error) {
 }
 
 func (r *Runtime) initQuerierModule() (services.Service, error) {
-	blockStore := object.NewStore(r.cfg.ObjectStoreEndpoint, r.cfg.ObjectStoreBucket)
+	blockStore := newBlockStorePlaceholder(r.cfg.ObjectStore)
 	return newQuerierModule(blockStore), nil
 }
 
 func (r *Runtime) initCompactorModule() (services.Service, error) {
-	blockStore := object.NewStore(r.cfg.ObjectStoreEndpoint, r.cfg.ObjectStoreBucket)
-	return newCompactorModule(blockStore), nil
+	switch strings.ToLower(strings.TrimSpace(r.cfg.StorageBackend)) {
+	case "", "mysql":
+	default:
+		return nil, fmt.Errorf("compactor requires mysql storage backend, got %q", r.cfg.StorageBackend)
+	}
+
+	walStore, err := mysql.NewWALStore(r.cfg.MySQLDSN)
+	if err != nil {
+		return nil, fmt.Errorf("create mysql wal store for compactor: %w", err)
+	}
+	bootstrapCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := walStore.AutoMigrate(bootstrapCtx); err != nil {
+		return nil, err
+	}
+
+	blockStore, err := object.NewStoreWithProviderConfig(bootstrapCtx, object.ProviderConfig{
+		Backend: r.cfg.ObjectStore.Backend,
+		Bucket:  r.cfg.ObjectStore.Bucket,
+		S3: object.S3ProviderConfig{
+			Endpoint:      r.cfg.ObjectStore.S3.Endpoint,
+			Region:        r.cfg.ObjectStore.S3.Region,
+			AccessKey:     r.cfg.ObjectStore.S3.AccessKey,
+			SecretKey:     r.cfg.ObjectStore.S3.SecretKey,
+			Insecure:      r.cfg.ObjectStore.S3.Insecure,
+			UseAWSSDKAuth: r.cfg.ObjectStore.S3.UseAWSSDKAuth,
+		},
+		GCS: object.GCSProviderConfig{
+			Bucket:         r.cfg.ObjectStore.GCS.Bucket,
+			ServiceAccount: r.cfg.ObjectStore.GCS.ServiceAccount,
+			UseGRPC:        r.cfg.ObjectStore.GCS.UseGRPC,
+		},
+		Azure: object.AzureProviderConfig{
+			ContainerName:           r.cfg.ObjectStore.Azure.ContainerName,
+			StorageAccountName:      r.cfg.ObjectStore.Azure.StorageAccountName,
+			StorageAccountKey:       r.cfg.ObjectStore.Azure.StorageAccountKey,
+			StorageConnectionString: r.cfg.ObjectStore.Azure.StorageConnectionString,
+			Endpoint:                r.cfg.ObjectStore.Azure.Endpoint,
+			CreateContainer:         r.cfg.ObjectStore.Azure.CreateContainer,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create object store for compactor: %w", err)
+	}
+
+	return newCompactorModule(
+		r.cfg.CompactorConfig,
+		r.logger,
+		"",
+		walStore,
+		walStore,
+		walStore,
+		walStore,
+		blockStore,
+		walStore,
+	), nil
+}
+
+func newBlockStorePlaceholder(cfg config.ObjectStoreConfig) *object.Store {
+	backend := strings.ToLower(strings.TrimSpace(cfg.Backend))
+	switch backend {
+	case "gcs":
+		bucket := strings.TrimSpace(cfg.GCS.Bucket)
+		if bucket == "" {
+			bucket = strings.TrimSpace(cfg.Bucket)
+		}
+		return object.NewStore("gcs://"+bucket, bucket)
+	case "azure":
+		container := strings.TrimSpace(cfg.Azure.ContainerName)
+		if container == "" {
+			container = strings.TrimSpace(cfg.Bucket)
+		}
+		return object.NewStore("azure://"+container, container)
+	default:
+		return object.NewStore(cfg.S3.Endpoint, cfg.Bucket)
+	}
 }

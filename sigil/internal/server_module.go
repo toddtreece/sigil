@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/sigil/sigil/internal/query"
 	"github.com/grafana/sigil/sigil/internal/server"
 	"github.com/grafana/sigil/sigil/internal/storage/mysql"
-	"github.com/grafana/sigil/sigil/internal/storage/object"
 	"github.com/grafana/sigil/sigil/internal/tempo"
 	"github.com/grafana/sigil/sigil/internal/tenantauth"
 	collecttracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
@@ -53,7 +52,6 @@ func (m *serverModule) start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_ = object.NewStore(m.cfg.ObjectStoreEndpoint, m.cfg.ObjectStoreBucket)
 
 	generationSvc := generationingest.NewService(generationStore)
 	generationGRPC := generationingest.NewGRPCServer(generationSvc)

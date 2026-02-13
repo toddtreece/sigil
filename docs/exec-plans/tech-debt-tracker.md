@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-12
+last_reviewed: 2026-02-13
 source_of_truth: true
 audience: both
 ---
@@ -27,6 +27,9 @@ Track deferred cross-cutting debt, unresolved architecture choices, and post-pha
 - [ ] Add benchmark and payload-size guardrail tests.
 - [x] Expand SDK end-to-end examples for Python and TypeScript/JavaScript.
 - [ ] Define retention and pruning policies for hot MySQL payloads vs compacted object storage.
+- [ ] Replace long-transaction `SKIP LOCKED` compaction claims with schema-based durable claim state to reduce lock windows and improve recovery semantics.
+- [ ] Improve single-large-tenant compaction throughput (multi-batch per cycle, shard/partition strategy, and/or parallelized claim workers under one tenant lease).
+- [ ] Reduce protobuf allocation churn in generation write/compaction paths by evaluating message/object reuse, buffer pooling, and marshal/unmarshal hot-path optimization.
 - [x] Define ingestion-log abstraction interface and implementation migration plan.
 - [ ] Evaluate Kafka as next backend for ingestion-log abstraction.
 - [ ] Evaluate WarpStream as a lower-ops-cost Kafka-compatible backend option.

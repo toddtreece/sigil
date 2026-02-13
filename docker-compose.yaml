@@ -80,8 +80,12 @@ services:
       SIGIL_TEMPO_OTLP_HTTP_ENDPOINT: tempo:4318
       SIGIL_STORAGE_BACKEND: mysql
       SIGIL_MYSQL_DSN: sigil:sigil@tcp(mysql:3306)/sigil?parseTime=true
+      SIGIL_OBJECT_STORE_BACKEND: s3
       SIGIL_OBJECT_STORE_ENDPOINT: http://minio:9000
       SIGIL_OBJECT_STORE_BUCKET: sigil
+      SIGIL_OBJECT_STORE_ACCESS_KEY: minioadmin
+      SIGIL_OBJECT_STORE_SECRET_KEY: minioadmin
+      SIGIL_OBJECT_STORE_INSECURE: "true"
       SIGIL_COMPACTOR_COMPACT_INTERVAL: 1m
       SIGIL_COMPACTOR_TRUNCATE_INTERVAL: 5m
       SIGIL_COMPACTOR_RETENTION: 1h
@@ -98,6 +102,8 @@ services:
       mysql:
         condition: service_healthy
       tempo:
+        condition: service_started
+      minio:
         condition: service_started
 
   mysql:
@@ -130,7 +136,7 @@ services:
       - sigil-data-tempo:/var/tempo
 
   minio:
-    profiles: ['object']
+    profiles: ['core']
     image: minio/minio:RELEASE.2025-01-20T14-49-07Z
     command: server /data --console-address ':9001'
     environment:
