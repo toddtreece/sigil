@@ -1,0 +1,12 @@
+{{- if .Values.tempo.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sigil.tempo.fullname" . }}
+  labels:
+    {{- include "sigil.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tempo
+data:
+  tempo.yaml: |
+{{ .Values.tempo.config | nindent 4 }}
+{{- end }}

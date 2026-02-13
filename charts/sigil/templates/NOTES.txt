@@ -1,0 +1,21 @@
+Sigil has been deployed.
+
+Service endpoint:
+  http://{{ include "sigil.fullname" . }}:{{ .Values.service.ports.http }}
+
+Health check:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "sigil.fullname" . }} 8080:{{ .Values.service.ports.http }}
+  curl http://127.0.0.1:8080/healthz
+
+Run chart test hook:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+{{- if .Values.mysql.enabled }}
+In-cluster MySQL is enabled at {{ include "sigil.mysql.fullname" . }}:{{ .Values.mysql.service.port }}.
+{{- end }}
+{{- if .Values.tempo.enabled }}
+In-cluster Tempo is enabled at {{ include "sigil.tempo.fullname" . }}.
+{{- end }}
+{{- if .Values.minio.enabled }}
+In-cluster MinIO is enabled at {{ include "sigil.minio.fullname" . }}.
+{{- end }}

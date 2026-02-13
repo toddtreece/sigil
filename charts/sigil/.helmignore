@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# VCS
+.git/
+.gitignore
+
+# Editors
+.idea/
+.vscode/
+
+# Temp files
+*.swp
+*.tmp
+*.bak

@@ -7,6 +7,7 @@ GOTOOLCHAIN = "go1.25.6+auto"
 [tools]
 node = "22"
 go = "1.25.7"
+helm = "3.19.0"
 "go:github.com/magefile/mage" = "v1.15.0"
 "go:github.com/air-verse/air" = "v1.64.5"
 "go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "v2.8.0"
@@ -99,8 +100,8 @@ description = "Apply TypeScript lint fixes and formatting"
 run = "pnpm --filter @grafana/sigil-plugin run lint:fix"
 
 [tasks.lint]
-description = "Run Go and TypeScript linting"
-depends = ["lint:go", "lint:ts"]
+description = "Run Go, TypeScript, and Helm linting"
+depends = ["lint:go", "lint:ts", "lint:helm"]
 
 [tasks."lint:go"]
 description = "Lint Go code in all modules"
@@ -122,6 +123,10 @@ done < <(find . -name go.mod -not -path './node_modules/*' -exec dirname {} \\; 
 description = "Lint TypeScript plugin code"
 run = "pnpm --filter @grafana/sigil-plugin run lint"
 
+[tasks."lint:helm"]
+description = "Lint Sigil Helm chart"
+run = "helm lint ./charts/sigil"
+
 [tasks.typecheck]
 description = "Run TypeScript type checks"
 depends = ["typecheck:ts:plugin", "typecheck:ts:sdk-js"]
@@ -135,7 +140,7 @@ description = "Type-check TypeScript/JavaScript SDK code"
 run = "pnpm --filter @grafana/sigil-sdk-js run typecheck"
 
 [tasks.test]
-description = "Run plugin, Sigil, and Go SDK tests"
+description = "Run plugin, Sigil, SDK, and Helm tests"
 depends = ["doctor:go"]
 run = """
 #!/usr/bin/env bash
@@ -148,6 +153,39 @@ mise run test:go:sdk-anthropic
 mise run test:go:sdk-openai
 mise run test:go:sdk-gemini
 mise run test:ts:sdk-js
+mise run test:helm
+"""
+
+[tasks."test:helm"]
+description = "Run Helm chart render tests"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+
+helm lint ./charts/sigil
+
+helm template sigil ./charts/sigil >/dev/null
+
+helm template sigil ./charts/sigil \
+  --set mysql.enabled=false \
+  --set tempo.enabled=false \
+  --set minio.enabled=false \
+  --set sigil.storage.mysql.dsn='sigil:sigil@tcp(mysql.example:3306)/sigil?parseTime=true' \
+  --set sigil.tempo.grpcEndpoint='tempo.example:4317' \
+  --set sigil.tempo.httpEndpoint='tempo.example:4318' \
+  --set sigil.objectStore.endpoint='https://object-store.example' >/dev/null
+
+helm template sigil ./charts/sigil \
+  --set minio.enabled=true >/dev/null
+"""
+
+[tasks."package:helm"]
+description = "Package Sigil Helm chart into dist/charts"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p dist/charts
+helm package ./charts/sigil --destination dist/charts
 """
 
 [tasks."test:go:sdk-core"]

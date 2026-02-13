@@ -49,6 +49,7 @@ This is the canonical navigation map for repository documentation.
 - External references: [`references/index.md`](references/index.md)
   - Generation ingest contract: [`references/generation-ingest-contract.md`](references/generation-ingest-contract.md)
   - Grafana response shapes: [`references/grafana-query-response-shapes.md`](references/grafana-query-response-shapes.md)
+  - Helm deployment chart: [`references/helm-chart.md`](references/helm-chart.md)
 
 ## Redundancy Rule
 

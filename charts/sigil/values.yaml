@@ -1,0 +1,209 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/grafana/sigil
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  annotations: {}
+  ports:
+    http: 8080
+    otlpGrpc: 4317
+    otlpHttp: 4318
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: sigil.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+startupProbe:
+  enabled: false
+  httpGet:
+    path: /healthz
+    port: http
+  failureThreshold: 30
+  periodSeconds: 5
+
+sigil:
+  target: all
+  auth:
+    enabled: true
+    fakeTenantID: fake
+  storage:
+    backend: mysql
+    mysql:
+      # Override DSN when using an external MySQL instance.
+      # If left empty and mysql.enabled=true, the chart generates DSN from mysql.* values.
+      dsn: ""
+  tempo:
+    # Override endpoints when using external Tempo.
+    grpcEndpoint: ""
+    httpEndpoint: ""
+  objectStore:
+    # Override endpoint when using external object storage.
+    endpoint: ""
+    bucket: sigil
+  compactor:
+    compactInterval: 1m
+    truncateInterval: 5m
+    retention: 1h
+    batchSize: 1000
+    leaseTTL: 30s
+  extraEnv: []
+  extraEnvFrom: []
+
+command: []
+args: []
+extraVolumeMounts: []
+extraVolumes: []
+
+mysql:
+  enabled: true
+  image:
+    repository: mysql
+    tag: "8.4"
+    pullPolicy: IfNotPresent
+  auth:
+    database: sigil
+    user: sigil
+    password: sigil
+    rootPassword: rootpass
+    existingSecret: ""
+    passwordKey: password
+    rootPasswordKey: root-password
+  service:
+    port: 3306
+  persistence:
+    enabled: true
+    existingClaim: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 8Gi
+    storageClass: ""
+  extraArgs: "--max_connections=1000"
+  resources: {}
+
+tempo:
+  enabled: true
+  image:
+    repository: grafana/tempo
+    tag: "2.10.0"
+    pullPolicy: IfNotPresent
+  service:
+    ports:
+      query: 3200
+      grpc: 4317
+      http: 4318
+  persistence:
+    enabled: true
+    existingClaim: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 8Gi
+    storageClass: ""
+  resources: {}
+  config: |
+    server:
+      http_listen_port: 3200
+
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc: {}
+            http: {}
+
+    ingester:
+      trace_idle_period: 10s
+      max_block_bytes: 1048576
+      max_block_duration: 5m
+
+    compactor:
+      compaction:
+        block_retention: 24h
+
+    storage:
+      trace:
+        backend: local
+        wal:
+          path: /var/tempo/wal
+        local:
+          path: /var/tempo/traces
+
+    overrides:
+      defaults: {}
+
+minio:
+  enabled: false
+  image:
+    repository: minio/minio
+    tag: "RELEASE.2025-01-20T14-49-07Z"
+    pullPolicy: IfNotPresent
+  rootUser: minioadmin
+  rootPassword: minioadmin
+  existingSecret: ""
+  secretKeys:
+    rootUser: root-user
+    rootPassword: root-password
+  service:
+    apiPort: 9000
+    consolePort: 9001
+  persistence:
+    enabled: true
+    existingClaim: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    storageClass: ""
+  resources: {}
+
+tests:
+  enabled: true
+  image:
+    repository: busybox
+    tag: "1.36"
+    pullPolicy: IfNotPresent
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

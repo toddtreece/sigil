@@ -1,0 +1,17 @@
+apiVersion: v2
+name: sigil
+description: Deploy the Sigil API with optional in-cluster MySQL, Tempo, and MinIO dependencies.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - sigil
+  - grafana
+  - observability
+  - otlp
+icon: https://raw.githubusercontent.com/grafana/sigil/main/logo.png
+sources:
+  - https://github.com/grafana/sigil
+maintainers:
+  - name: Grafana Sigil

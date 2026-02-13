@@ -48,6 +48,30 @@ To run with optional MinIO profile:
 mise run up:object
 ```
 
+## Helm Chart
+
+A Kubernetes Helm chart is available at `charts/sigil` for deploying the Sigil API.
+
+Basic install:
+
+```bash
+helm upgrade --install sigil ./charts/sigil \
+  --namespace sigil \
+  --create-namespace \
+  --set image.repository=<your-image-repository> \
+  --set image.tag=<your-image-tag>
+```
+
+The chart can run with bundled MySQL/Tempo or external dependencies. See `charts/sigil/README.md` and `docs/references/helm-chart.md` for full configuration details.
+
+Helm-related repository tasks:
+
+```bash
+mise run lint:helm
+mise run test:helm
+mise run package:helm
+```
+
 ## Toolchain Guardrails
 
 The repository is pinned to Go `1.25.6` in `go.work` and all Go modules.

@@ -1,0 +1,27 @@
+{{- if .Values.tempo.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sigil.tempo.fullname" . }}
+  labels:
+    {{- include "sigil.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tempo
+spec:
+  type: ClusterIP
+  ports:
+    - name: query
+      port: {{ .Values.tempo.service.ports.query }}
+      targetPort: query
+      protocol: TCP
+    - name: otlp-grpc
+      port: {{ .Values.tempo.service.ports.grpc }}
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: {{ .Values.tempo.service.ports.http }}
+      targetPort: otlp-http
+      protocol: TCP
+  selector:
+    {{- include "sigil.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: tempo
+{{- end }}
