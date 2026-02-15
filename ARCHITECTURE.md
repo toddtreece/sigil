@@ -92,19 +92,33 @@ Design doc: `docs/design-docs/2026-02-13-sdk-metrics-and-telemetry-pipeline.md`
 
 ## Query Model
 
-- Tempo is the primary backend for trace search and TraceQL-based metrics workflows.
-- Query fan-out hydration from MySQL/object storage is the Phase D target.
-- Current `sigil/internal/query` implementation is still placeholder/bootstrap.
+- Tempo is the search index for conversation discovery via TraceQL.
+- MySQL/object storage is the hydration layer for generation payloads.
+- Conversation-level aggregates (models, agents, error counts) are computed at query time from Tempo span results.
+- MySQL `conversations` table provides authoritative metadata (`generation_count`) used for conversation-level filters.
 - Query access from the plugin frontend is plugin-proxy-only.
+
+Design doc: `docs/design-docs/2026-02-15-conversation-query-path.md`
+
+### Query endpoints
+
+- `POST /api/v1/conversations/search` -- Tempo-backed conversation search with filter language.
+- `GET /api/v1/conversations/{id}` -- full conversation with all hydrated generations (MySQL/object storage).
+- `GET /api/v1/generations/{id}` -- single generation detail (MySQL/object storage).
+- `GET /api/v1/search/tags` -- filter key autocomplete (Tempo tags + well-known aliases).
+- `GET /api/v1/search/tag/{tag}/values` -- filter value autocomplete (Tempo tag values).
+- Pass-through proxy routes for Prometheus (`/api/v1/proxy/prometheus/...`) and Tempo (`/api/v1/proxy/tempo/...`).
 
 ### Query access path
 
 1. Frontend sends query request to plugin backend resource endpoint.
 2. Plugin backend applies tenant header behavior and forwards to Sigil API query endpoint.
 3. Sigil API query path:
-   - current: placeholder conversation/completion/trace endpoints plus pass-through query proxy routes for Prometheus/Mimir and Tempo
-   - target: Tempo query + storage hydration/fan-out reads
-4. Sigil API returns Grafana-compatible query envelope and frames.
+   - conversation search: parse filter expression, translate to TraceQL, query Tempo, extract conversation IDs from matching spans, enrich from MySQL/object storage, apply conversation-level filters, return paginated summaries.
+   - conversation detail: direct MySQL/object storage fan-out read by conversation ID, return all hydrated generations.
+   - generation detail: direct MySQL/object storage read by generation ID.
+   - proxy routes: pass-through to Prometheus/Tempo for raw query access.
+4. Sigil API returns JSON responses (search summaries, full payloads, or pass-through).
 
 ## Runtime Read/Write Paths
 
@@ -137,30 +151,33 @@ flowchart LR
     K --> E
 ```
 
-### Read path (current vs target)
+### Read path
 
 Read path components:
 
 1. Grafana plugin frontend calls plugin backend resource routes.
 2. Plugin backend adds tenant context and forwards to Sigil query API.
-3. Current query backend is placeholder/bootstrap.
-4. Phase D target query backend fan-out:
-   - Tempo for trace search/detail
-   - MySQL hot rows (`generations`, `conversations`)
-   - MySQL block catalog (`compaction_blocks`)
-   - object storage blocks (`data.sigil`, `index.sigil`)
-   - union + dedupe by `generation_id` with hot-row preference.
+3. Conversation search:
+   - Sigil translates user filter expression to TraceQL with `gen_ai.operation.name != ""` base predicate.
+   - Tempo returns matching spans with `sigil.generation.id` and `gen_ai.conversation.id` attributes.
+   - Sigil groups spans by conversation, enriches from MySQL metadata and feedback tables.
+   - Paginated conversation summaries returned to frontend.
+4. Conversation/generation detail:
+   - MySQL hot rows (`generations`, `conversations`) + object storage blocks.
+   - Union + dedupe by `generation_id` with hot-row preference.
+5. Proxy routes pass through to Tempo and Prometheus for raw access.
 
 ```mermaid
 flowchart LR
     A["Grafana plugin frontend"] --> B["Plugin backend proxy"]
     B --> C["Sigil Query API"]
-    C -->|"current"| D["Placeholder query service"]
-    C -.->|"Phase D target"| E["Tempo"]
-    C -.->|"Phase D target"| F["MySQL: generations + conversations"]
-    C -.->|"Phase D target"| G["MySQL: compaction_blocks"]
-    C -.->|"Phase D target"| H["Object storage blocks"]
-    C -.->|"Phase D target: merge + dedupe"| I["Grafana query frames"]
+    C -->|"conversation search"| D["Filter parser + TraceQL builder"]
+    D --> E["Tempo: /api/search"]
+    E -->|"matching spans"| F["Merge + dedupe by conversation"]
+    F --> G["MySQL: conversations + feedback"]
+    F -->|"conversation/generation detail"| H["MySQL: generations"]
+    F -->|"cold payloads"| I["Object storage blocks"]
+    F --> J["Response"]
 ```
 
 ## Tenant/Auth Model
@@ -324,17 +341,20 @@ Note: OTLP trace and metric ingest is handled by Alloy / OTel Collector, not by 
 
 ### Query
 
-Current bootstrap endpoints on `main`:
+Conversation query path (design doc: `docs/design-docs/2026-02-15-conversation-query-path.md`):
 
 - Sigil API query endpoints:
-  - `GET /api/v1/conversations`
-  - `GET /api/v1/conversations/{conversation_id}`
+  - `POST /api/v1/conversations/search` -- Tempo-backed conversation search with filter language
+  - `GET /api/v1/conversations/{conversation_id}` -- full conversation with hydrated generations
+  - `GET /api/v1/generations/{generation_id}` -- single generation detail
+  - `GET /api/v1/search/tags` -- filter key autocomplete
+  - `GET /api/v1/search/tag/{tag}/values` -- filter value autocomplete
+- Feedback endpoints (unchanged):
   - `GET /api/v1/conversations/{conversation_id}/ratings`
   - `POST /api/v1/conversations/{conversation_id}/ratings`
   - `GET /api/v1/conversations/{conversation_id}/annotations`
   - `POST /api/v1/conversations/{conversation_id}/annotations`
-  - `GET /api/v1/completions`
-  - `GET /api/v1/traces/{trace_id}`
+- Pass-through proxy endpoints (unchanged):
   - `GET|POST /api/v1/proxy/prometheus/api/v1/query`
   - `GET|POST /api/v1/proxy/prometheus/api/v1/query_range`
   - `GET|POST /api/v1/proxy/prometheus/api/v1/query_exemplars`
@@ -352,20 +372,20 @@ Current bootstrap endpoints on `main`:
   - `GET /api/v1/proxy/tempo/api/metrics/query`
   - `GET /api/v1/proxy/tempo/api/metrics/query_range`
 - Plugin resource proxy endpoints:
-  - `GET /api/plugins/grafana-sigil-app/resources/query/conversations`
+  - `POST /api/plugins/grafana-sigil-app/resources/query/conversations/search`
   - `GET /api/plugins/grafana-sigil-app/resources/query/conversations/{conversation_id}`
+  - `GET /api/plugins/grafana-sigil-app/resources/query/generations/{generation_id}`
+  - `GET /api/plugins/grafana-sigil-app/resources/query/search/tags`
+  - `GET /api/plugins/grafana-sigil-app/resources/query/search/tag/{tag}/values`
   - `GET /api/plugins/grafana-sigil-app/resources/query/conversations/{conversation_id}/ratings`
   - `POST /api/plugins/grafana-sigil-app/resources/query/conversations/{conversation_id}/ratings`
   - `GET /api/plugins/grafana-sigil-app/resources/query/conversations/{conversation_id}/annotations`
   - `POST /api/plugins/grafana-sigil-app/resources/query/conversations/{conversation_id}/annotations`
-  - `GET /api/plugins/grafana-sigil-app/resources/query/completions`
   - `/api/plugins/grafana-sigil-app/resources/query/proxy/prometheus/...`
   - `/api/plugins/grafana-sigil-app/resources/query/proxy/tempo/...`
-
-Phase 2 target contract (tracked in `docs/exec-plans/active/2026-02-12-phase-2-query-proxy.md`):
-
-- Sigil API query endpoint: `POST /api/v1/query`
-- Plugin resource proxy endpoint: `POST /api/plugins/grafana-sigil-app/resources/query`
+- Dropped placeholder endpoints:
+  - `GET /api/v1/completions` (replaced by conversation search)
+  - `GET /api/v1/traces/{trace_id}` (replaced by Tempo proxy)
 
 ## Query Response Contract
 
