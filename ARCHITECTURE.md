@@ -102,7 +102,7 @@ Design doc: `docs/design-docs/2026-02-13-sdk-metrics-and-telemetry-pipeline.md`
 1. Frontend sends query request to plugin backend resource endpoint.
 2. Plugin backend applies tenant header behavior and forwards to Sigil API query endpoint.
 3. Sigil API query path:
-   - current: placeholder response path
+   - current: placeholder conversation/completion/trace endpoints plus pass-through query proxy routes for Prometheus/Mimir and Tempo
    - target: Tempo query + storage hydration/fan-out reads
 4. Sigil API returns Grafana-compatible query envelope and frames.
 
@@ -166,6 +166,7 @@ flowchart LR
 ## Tenant/Auth Model
 
 - Tenant header: `X-Scope-OrgID`.
+- Operator guide: `docs/references/multi-tenancy.md`.
 - Auth model is lightweight tenant header extraction/enforcement.
 - OSS mode supports `auth enabled/disabled` behavior:
   - enabled: protected endpoints require tenant context
@@ -334,6 +335,22 @@ Current bootstrap endpoints on `main`:
   - `POST /api/v1/conversations/{conversation_id}/annotations`
   - `GET /api/v1/completions`
   - `GET /api/v1/traces/{trace_id}`
+  - `GET|POST /api/v1/proxy/prometheus/api/v1/query`
+  - `GET|POST /api/v1/proxy/prometheus/api/v1/query_range`
+  - `GET|POST /api/v1/proxy/prometheus/api/v1/query_exemplars`
+  - `GET|POST /api/v1/proxy/prometheus/api/v1/series`
+  - `GET|POST /api/v1/proxy/prometheus/api/v1/labels`
+  - `GET /api/v1/proxy/prometheus/api/v1/label/{name}/values`
+  - `GET /api/v1/proxy/prometheus/api/v1/metadata`
+  - `GET /api/v1/proxy/tempo/api/search`
+  - `GET /api/v1/proxy/tempo/api/search/tags`
+  - `GET /api/v1/proxy/tempo/api/v2/search/tags`
+  - `GET /api/v1/proxy/tempo/api/search/tag/{tag}/values`
+  - `GET /api/v1/proxy/tempo/api/v2/search/tag/{tag}/values`
+  - `GET /api/v1/proxy/tempo/api/traces/{trace_id}`
+  - `GET /api/v1/proxy/tempo/api/v2/traces/{trace_id}`
+  - `GET /api/v1/proxy/tempo/api/metrics/query`
+  - `GET /api/v1/proxy/tempo/api/metrics/query_range`
 - Plugin resource proxy endpoints:
   - `GET /api/plugins/grafana-sigil-app/resources/query/conversations`
   - `GET /api/plugins/grafana-sigil-app/resources/query/conversations/{conversation_id}`
@@ -342,7 +359,8 @@ Current bootstrap endpoints on `main`:
   - `GET /api/plugins/grafana-sigil-app/resources/query/conversations/{conversation_id}/annotations`
   - `POST /api/plugins/grafana-sigil-app/resources/query/conversations/{conversation_id}/annotations`
   - `GET /api/plugins/grafana-sigil-app/resources/query/completions`
-  - `GET /api/plugins/grafana-sigil-app/resources/query/traces/{trace_id}`
+  - `/api/plugins/grafana-sigil-app/resources/query/proxy/prometheus/...`
+  - `/api/plugins/grafana-sigil-app/resources/query/proxy/tempo/...`
 
 Phase 2 target contract (tracked in `docs/exec-plans/active/2026-02-12-phase-2-query-proxy.md`):
 
@@ -398,7 +416,7 @@ See `docs/references/grafana-query-response-shapes.md`.
 - Generation export auth supports strict modes:
   - `none`, `tenant`, `bearer`
   - `tenant` mode injects `X-Scope-OrgID`
-  - `bearer` mode injects `Authorization: Bearer <token>`
+- `bearer` mode injects `Authorization: Bearer <token>`
 - Trace/metric exporter auth and transport are configured in the application's OTEL SDK setup.
 - SDK conversation feedback helpers (ratings/annotations) use a dedicated Sigil API base endpoint config (default `http://localhost:8080`) and reuse generation auth headers.
 - Auth config validation is strict and fail-fast during config resolution/client init.
