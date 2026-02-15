@@ -40,7 +40,7 @@ func TestCallResource(t *testing.T) {
 		case "/api/v1/conversations/c-1/ratings":
 			if r.Method == http.MethodPost {
 				body, _ := io.ReadAll(r.Body)
-				_, _ = io.WriteString(w, string(body))
+				_, _ = w.Write(body)
 				return
 			}
 			_, _ = io.WriteString(w, `{"items":[{"rating_id":"rat-1"}]}`)
@@ -51,7 +51,7 @@ func TestCallResource(t *testing.T) {
 					return
 				}
 				body, _ := io.ReadAll(r.Body)
-				_, _ = io.WriteString(w, string(body))
+				_, _ = w.Write(body)
 				return
 			}
 			_, _ = io.WriteString(w, `{"items":[{"annotation_id":"ann-1"}]}`)
@@ -184,7 +184,7 @@ func TestCallResourceSupportsProxyPrometheusPostPassThrough(t *testing.T) {
 				return
 			}
 			body, _ := io.ReadAll(r.Body)
-			_, _ = io.WriteString(w, string(body))
+			_, _ = w.Write(body)
 		default:
 			http.NotFound(w, r)
 		}
@@ -229,7 +229,7 @@ func TestCallResourceSupportsConversationRatingAndAnnotationWrites(t *testing.T)
 				return
 			}
 			body, _ := io.ReadAll(r.Body)
-			_, _ = io.WriteString(w, string(body))
+			_, _ = w.Write(body)
 		case "/api/v1/conversations/c-1/annotations":
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -240,7 +240,7 @@ func TestCallResourceSupportsConversationRatingAndAnnotationWrites(t *testing.T)
 				return
 			}
 			body, _ := io.ReadAll(r.Body)
-			_, _ = io.WriteString(w, string(body))
+			_, _ = w.Write(body)
 		default:
 			http.NotFound(w, r)
 		}

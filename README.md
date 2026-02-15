@@ -118,7 +118,9 @@ Chart docs and reference:
 - Chart usage: [`charts/sigil/README.md`](charts/sigil/README.md)
 - Helm reference: [`docs/references/helm-chart.md`](docs/references/helm-chart.md)
 
-## SDK Example (TypeScript/JavaScript)
+## SDK Quick Examples
+
+### TypeScript
 
 ```ts
 import { SigilClient } from "@grafana/sigil-sdk-js";
@@ -146,6 +148,81 @@ await client.startGeneration(
 );
 
 await client.shutdown();
+```
+
+### JavaScript
+
+```js
+import { SigilClient } from "@grafana/sigil-sdk-js";
+
+const client = new SigilClient({
+  generationExport: {
+    protocol: "http",
+    endpoint: "http://localhost:8080/api/v1/generations:export",
+    auth: { mode: "tenant", tenantId: "dev-tenant" },
+  },
+});
+
+await client.startGeneration(
+  {
+    conversationId: "conv-1",
+    model: { provider: "openai", name: "gpt-5" },
+  },
+  async (recorder) => {
+    recorder.setResult({
+      output: [{ role: "assistant", content: "Hello from Sigil" }],
+    });
+  }
+);
+
+await client.shutdown();
+```
+
+### Go
+
+```go
+cfg := sigil.DefaultConfig()
+cfg.GenerationExport.Protocol = sigil.GenerationExportProtocolHTTP
+cfg.GenerationExport.Endpoint = "http://localhost:8080/api/v1/generations:export"
+cfg.GenerationExport.Auth = sigil.AuthConfig{
+	Mode:     sigil.ExportAuthModeTenant,
+	TenantID: "dev-tenant",
+}
+
+client := sigil.NewClient(cfg)
+defer func() { _ = client.Shutdown(context.Background()) }()
+
+ctx, rec := client.StartGeneration(context.Background(), sigil.GenerationStart{
+	ConversationID: "conv-1",
+	Model:          sigil.ModelRef{Provider: "openai", Name: "gpt-5"},
+})
+defer rec.End()
+
+rec.SetResult(sigil.Generation{
+	Output: []sigil.Message{sigil.AssistantTextMessage("Hello from Sigil")},
+}, nil)
+```
+
+### Python
+
+```python
+from sigil_sdk import Client, ClientConfig, GenerationStart, ModelRef, assistant_text_message
+
+client = Client(
+    ClientConfig(
+        generation_export_endpoint="http://localhost:8080/api/v1/generations:export",
+    )
+)
+
+with client.start_generation(
+    GenerationStart(
+        conversation_id="conv-1",
+        model=ModelRef(provider="openai", name="gpt-5"),
+    )
+) as rec:
+    rec.set_result(output=[assistant_text_message("Hello from Sigil")])
+
+client.shutdown()
 ```
 
 ## SDKs We Support
