@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-14
+last_reviewed: 2026-02-15
 source_of_truth: true
 audience: both
 ---
@@ -79,7 +79,7 @@ Design doc: `docs/design-docs/2026-02-13-sdk-metrics-and-telemetry-pipeline.md`
 - Primary transport is gRPC with HTTP parity.
 - HTTP and gRPC ingest paths call one shared export service path.
 - Export in SDKs is buffered, batched, and asynchronous.
-- `shutdown` is required to flush pending generations, metrics, and trace provider state.
+- `shutdown` is required to flush pending generations.
 
 ### Deployment topology guidance
 
@@ -395,10 +395,11 @@ See `docs/references/grafana-query-response-shapes.md`.
 - Empty tool names return a no-op tool recorder (instrumentation safety behavior).
 - `rec.Err()` surfaces local validation/enqueue failures only.
 - Background export failures are retried and logged.
-- Trace and generation auth are configured independently per export:
-  - modes: `none`, `tenant`, `bearer`
+- Generation export auth supports strict modes:
+  - `none`, `tenant`, `bearer`
   - `tenant` mode injects `X-Scope-OrgID`
   - `bearer` mode injects `Authorization: Bearer <token>`
+- Trace/metric exporter auth and transport are configured in the application's OTEL SDK setup.
 - SDK conversation feedback helpers (ratings/annotations) use a dedicated Sigil API base endpoint config (default `http://localhost:8080`) and reuse generation auth headers.
 - Auth config validation is strict and fail-fast during config resolution/client init.
 - Explicit transport headers have precedence over injected auth headers for `Authorization` and `X-Scope-OrgID`.
