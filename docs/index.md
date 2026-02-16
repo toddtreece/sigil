@@ -29,6 +29,7 @@ This is the canonical navigation map for repository documentation.
 ## Structured Collections
 
 - Design docs: [`design-docs/index.md`](design-docs/index.md)
+  - Drafts: `design-docs/drafts/`
 - Product specs: [`product-specs/index.md`](product-specs/index.md)
 - SDK docs:
   - Java SDK README: `../sdks/java/README.md`
@@ -39,6 +40,7 @@ This is the canonical navigation map for repository documentation.
   - Go SDK README: `../sdks/go/README.md`
 - Execution plans:
   - Active: `exec-plans/active/`
+    - Drafts: `exec-plans/active/drafts/`
   - Current implementation priority: query proxy, then hybrid storage/query behavior, then compaction scaling and cross-track consistency
   - Phase 2 umbrella coordinator: `exec-plans/active/2026-02-12-phase-2-delivery.md`
   - Phase 2 parallel tracks:
