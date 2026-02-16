@@ -403,6 +403,9 @@ See `docs/references/grafana-query-response-shapes.md`.
   - `STREAM`: streaming provider flows
 - Normalized fields are always sent:
   - model/system prompt/input/output/tools/usage/metadata/timestamps/tags
+- SDK-owned identity metadata keys are always present on normalized generations:
+  - `sigil.sdk.name`
+  - callers may set this key, but SDK normalization overwrites it with SDK-owned values
 - Request controls are first-class optional generation fields:
   - `max_tokens`
   - `temperature`
@@ -431,6 +434,8 @@ See `docs/references/grafana-query-response-shapes.md`.
 - Raw provider artifacts are default OFF, explicit opt-in only.
 - SDK validation enforces message role/part compatibility and artifact payload-or-record-id constraints.
 - Empty tool names return a no-op tool recorder (instrumentation safety behavior).
+- Generation and execute_tool spans always include SDK identity attributes:
+  - `sigil.sdk.name`
 - `rec.Err()` surfaces local validation/enqueue failures only.
 - Background export failures are retried and logged.
 - Generation export auth supports strict modes:
