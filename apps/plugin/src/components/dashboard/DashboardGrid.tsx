@@ -3,8 +3,8 @@ import { css } from '@emotion/css';
 import { type GrafanaTheme2, type TimeRange } from '@grafana/data';
 import { useStyles2 } from '@grafana/ui';
 import type { DashboardDataSource } from '../../dashboard/api';
-import type { DashboardFilters } from '../../dashboard/types';
-import { type PricingMap, calculateTotalCost, calculateCostTimeSeries } from '../../dashboard/cost';
+import type { DashboardFilters, ModelResolvePair, PrometheusQueryResponse } from '../../dashboard/types';
+import { calculateTotalCost, calculateCostTimeSeries } from '../../dashboard/cost';
 import {
   computeStep,
   computeRateInterval,
@@ -30,6 +30,7 @@ import {
 } from '../../dashboard/transforms';
 import { usePrometheusQuery } from './usePrometheusQuery';
 import { MetricPanel } from './MetricPanel';
+import { useResolvedModelPricing } from './useResolvedModelPricing';
 
 export type DashboardGridProps = {
   dataSource: DashboardDataSource;
@@ -37,13 +38,12 @@ export type DashboardGridProps = {
   from: number;
   to: number;
   timeRange: TimeRange;
-  pricingMap: PricingMap;
 };
 
 const STAT_HEIGHT = 120;
 const CHART_HEIGHT = 300;
 
-export function DashboardGrid({ dataSource, filters, from, to, timeRange, pricingMap }: DashboardGridProps) {
+export function DashboardGrid({ dataSource, filters, from, to, timeRange }: DashboardGridProps) {
   const styles = useStyles2(getStyles);
 
   const step = useMemo(() => computeStep(from, to), [from, to]);
@@ -97,20 +97,70 @@ export function DashboardGrid({ dataSource, filters, from, to, timeRange, pricin
   const byProvider = usePrometheusQuery(dataSource, callsByProviderQuery(filters, rangeDuration), from, to, 'instant');
   const byModel = usePrometheusQuery(dataSource, topModelsQuery(filters, rangeDuration), from, to, 'instant');
 
-  // Computed cost
-  const totalCostValue = useMemo(() => {
+  const resolvePairs = useMemo(() => {
+    const pairs: ModelResolvePair[] = [];
+    pairs.push(...extractResolvePairs(costTokens.data));
+    pairs.push(...extractResolvePairs(tokensByModel.data));
+    return pairs;
+  }, [costTokens.data, tokensByModel.data]);
+  const resolvedPricing = useResolvedModelPricing(dataSource, resolvePairs);
+
+  const totalCost = useMemo(() => {
     if (!costTokens.data) {
-      return 0;
+      return { totalCost: 0, unresolvedTokens: 0, unresolvedSeries: [] };
     }
-    return calculateTotalCost(costTokens.data, pricingMap);
-  }, [costTokens.data, pricingMap]);
+    return calculateTotalCost(costTokens.data, resolvedPricing.pricingMap);
+  }, [costTokens.data, resolvedPricing.pricingMap]);
 
   const costTimeSeries = useMemo(() => {
     if (!tokensByModel.data) {
       return [];
     }
-    return [calculateCostTimeSeries(tokensByModel.data, pricingMap)];
-  }, [tokensByModel.data, pricingMap]);
+    return [calculateCostTimeSeries(tokensByModel.data, resolvedPricing.pricingMap)];
+  }, [tokensByModel.data, resolvedPricing.pricingMap]);
+
+  const unresolvedSummary = useMemo(() => {
+    if (totalCost.unresolvedSeries.length === 0) {
+      return '';
+    }
+    const reasonByPair = new Map<string, string>();
+    for (const item of resolvedPricing.unresolved) {
+      const pair = `${item.provider}/${item.model}`;
+      if (!item.reason || reasonByPair.has(pair)) {
+        continue;
+      }
+      reasonByPair.set(pair, item.reason);
+    }
+
+    const countsByPair = new Map<string, number>();
+    for (const series of totalCost.unresolvedSeries) {
+      const pair = `${series.provider}/${series.model}`;
+      countsByPair.set(pair, (countsByPair.get(pair) ?? 0) + series.count);
+    }
+
+    const sortedPairs = Array.from(countsByPair.entries()).sort((a, b) => b[1] - a[1]);
+    const topPairs = sortedPairs.slice(0, 3).map(([pair]) => {
+      const reason = reasonByPair.get(pair);
+      return reason ? `${pair} (${reason})` : pair;
+    });
+    const remaining = sortedPairs.length - topPairs.length;
+    const suffix = remaining > 0 ? ` +${remaining} more` : '';
+    return `Excluded ${Math.round(totalCost.unresolvedTokens)} unresolved tokens: ${topPairs.join(', ')}${suffix}.`;
+  }, [resolvedPricing.unresolved, totalCost.unresolvedSeries, totalCost.unresolvedTokens]);
+
+  const costDescription = useMemo(() => {
+    const details: string[] = ['Cost computed from token totals and resolved model-card pricing.'];
+    if (resolvedPricing.error) {
+      details.push(`Resolver error: ${resolvedPricing.error}.`);
+    }
+    if (unresolvedSummary) {
+      details.push(unresolvedSummary);
+    }
+    return details.join(' ');
+  }, [resolvedPricing.error, unresolvedSummary]);
+
+  const costLoading = costTokens.loading || resolvedPricing.loading;
+  const costSeriesLoading = tokensByModel.loading || resolvedPricing.loading;
 
   return (
     <div className={styles.grid}>
@@ -158,12 +208,23 @@ export function DashboardGrid({ dataSource, filters, from, to, timeRange, pricin
         />
         <MetricPanel
           title="Estimated Cost"
+          description={costDescription}
           pluginId="stat"
           height={STAT_HEIGHT}
           timeRange={timeRange}
-          loading={costTokens.loading}
+          loading={costLoading}
           error={costTokens.error}
-          data={[statValueToDataFrame(totalCostValue, 'Cost', 'currencyUSD')]}
+          data={[statValueToDataFrame(totalCost.totalCost, 'Cost', 'currencyUSD')]}
+        />
+        <MetricPanel
+          title="Unpriced Tokens"
+          description="Tokens excluded from cost because model-card pricing could not be resolved"
+          pluginId="stat"
+          height={STAT_HEIGHT}
+          timeRange={timeRange}
+          loading={costLoading}
+          error={costTokens.error}
+          data={[statValueToDataFrame(totalCost.unresolvedTokens, 'Unpriced Tokens')]}
         />
       </div>
 
@@ -186,7 +247,7 @@ export function DashboardGrid({ dataSource, filters, from, to, timeRange, pricin
         pluginId="timeseries"
         height={CHART_HEIGHT}
         timeRange={timeRange}
-        loading={tokensByModel.loading}
+        loading={costSeriesLoading}
         error={tokensByModel.error}
         data={costTimeSeries}
       />
@@ -276,6 +337,26 @@ export function DashboardGrid({ dataSource, filters, from, to, timeRange, pricin
   );
 }
 
+function extractResolvePairs(response?: PrometheusQueryResponse): ModelResolvePair[] {
+  if (!response) {
+    return [];
+  }
+  if (response.data.resultType !== 'vector' && response.data.resultType !== 'matrix') {
+    return [];
+  }
+
+  const pairs: ModelResolvePair[] = [];
+  for (const result of response.data.result) {
+    const provider = result.metric.gen_ai_provider_name ?? '';
+    const model = result.metric.gen_ai_request_model ?? '';
+    if (!provider || !model) {
+      continue;
+    }
+    pairs.push({ provider, model });
+  }
+  return pairs;
+}
+
 function getStyles(theme: GrafanaTheme2) {
   return {
     grid: css({
@@ -285,7 +366,7 @@ function getStyles(theme: GrafanaTheme2) {
     }),
     statRow: css({
       display: 'grid',
-      gridTemplateColumns: 'repeat(5, 1fr)',
+      gridTemplateColumns: 'repeat(6, 1fr)',
       gap: theme.spacing(1),
     }),
     twoColRow: css({
