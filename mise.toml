@@ -452,6 +452,21 @@ while IFS= read -r moddir; do
 done < <(find ./sdks -name go.mod -exec dirname {} \\; | sort)
 """
 
+[tasks."test:e2e:storage-local"]
+description = "Run local compose-backed hot+cold storage round-trip test"
+depends = ["doctor:go"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+cd sigil
+GOWORK=off go test ./e2e -tags=e2e -run TestStorageHotColdRoundTripLocal -count=1 -v
+"""
+
+[tasks."bench:storage"]
+description = "Run Sigil storage benchmarks (WAL, object, compactor, fan-out)"
+depends = ["doctor:go"]
+run = "cd sigil && GOWORK=off go test ./internal/storage/... -run '^$' -bench . -benchmem"
+
 [tasks.check]
 description = "Run lint, typecheck and tests"
 depends = ["lint", "typecheck", "test"]

@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/sigil/sigil/internal/feedback"
 	sigilv1 "github.com/grafana/sigil/sigil/internal/gen/sigil/v1"
 	"github.com/grafana/sigil/sigil/internal/storage"
-	"github.com/grafana/sigil/sigil/internal/storage/object"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -126,6 +125,7 @@ type ServiceDependencies struct {
 	WALReader           storage.WALReader
 	BlockMetadataStore  storage.BlockMetadataStore
 	BlockReader         storage.BlockReader
+	FanOutStore         storage.GenerationFanOutReader
 	FeedbackStore       feedback.Store
 	ScoreStore          scoreStore
 	TempoBaseURL        string
@@ -137,8 +137,7 @@ type ServiceDependencies struct {
 type Service struct {
 	conversationStore      storage.ConversationStore
 	walReader              storage.WALReader
-	blockMetadataStore     storage.BlockMetadataStore
-	blockReader            storage.BlockReader
+	fanOutStore            storage.GenerationFanOutReader
 	ratingSummaryStore     ratingSummaryStore
 	annotationSummaryStore annotationSummaryStore
 	annotationEventStore   annotationEventStore
@@ -162,6 +161,8 @@ func NewService() *Service {
 func NewServiceWithStores(conversationStore storage.ConversationStore, feedbackStore feedback.Store) *Service {
 	service := NewService()
 	service.conversationStore = conversationStore
+
+	var blockMetadataStore storage.BlockMetadataStore
 	if reader, ok := conversationStore.(storage.WALReader); ok {
 		service.walReader = reader
 	}
@@ -169,14 +170,21 @@ func NewServiceWithStores(conversationStore storage.ConversationStore, feedbackS
 		service.scoreStore = store
 	}
 	if metadataStore, ok := conversationStore.(storage.BlockMetadataStore); ok {
-		service.blockMetadataStore = metadataStore
+		blockMetadataStore = metadataStore
 	}
+	service.fanOutStore = storage.NewFanOutStore(service.walReader, blockMetadataStore, nil)
 	service.attachFeedbackStore(feedbackStore)
 	return service
 }
 
 func NewServiceWithDependencies(dependencies ServiceDependencies) (*Service, error) {
 	service := NewServiceWithStores(dependencies.ConversationStore, dependencies.FeedbackStore)
+
+	var blockMetadataStore storage.BlockMetadataStore
+	if metadataStore, ok := dependencies.ConversationStore.(storage.BlockMetadataStore); ok {
+		blockMetadataStore = metadataStore
+	}
+
 	if dependencies.WALReader != nil {
 		service.walReader = dependencies.WALReader
 		if store, ok := dependencies.WALReader.(scoreStore); ok {
@@ -184,13 +192,15 @@ func NewServiceWithDependencies(dependencies ServiceDependencies) (*Service, err
 		}
 	}
 	if dependencies.BlockMetadataStore != nil {
-		service.blockMetadataStore = dependencies.BlockMetadataStore
-	}
-	if dependencies.BlockReader != nil {
-		service.blockReader = dependencies.BlockReader
+		blockMetadataStore = dependencies.BlockMetadataStore
 	}
 	if dependencies.ScoreStore != nil {
 		service.scoreStore = dependencies.ScoreStore
+	}
+	if dependencies.FanOutStore != nil {
+		service.fanOutStore = dependencies.FanOutStore
+	} else {
+		service.fanOutStore = storage.NewFanOutStore(service.walReader, blockMetadataStore, dependencies.BlockReader)
 	}
 
 	if dependencies.OverfetchMultiplier > 0 {
@@ -675,6 +685,10 @@ func (s *Service) GetConversationDetailForTenant(ctx context.Context, tenantID, 
 	if s.walReader == nil {
 		return ConversationDetail{}, false, errors.New("wal reader is not configured")
 	}
+	fanOutStore := s.fanOutStore
+	if fanOutStore == nil {
+		fanOutStore = storage.NewFanOutStore(s.walReader, nil, nil)
+	}
 
 	conversation, err := s.conversationStore.GetConversation(ctx, trimmedTenantID, trimmedConversationID)
 	if err != nil {
@@ -684,15 +698,10 @@ func (s *Service) GetConversationDetailForTenant(ctx context.Context, tenantID, 
 		return ConversationDetail{}, false, nil
 	}
 
-	hotGenerations, err := s.walReader.GetByConversationID(ctx, trimmedTenantID, trimmedConversationID)
+	mergedGenerations, err := fanOutStore.ListConversationGenerations(ctx, trimmedTenantID, trimmedConversationID)
 	if err != nil {
 		return ConversationDetail{}, false, err
 	}
-	coldGenerations, err := s.loadColdConversationGenerations(ctx, trimmedTenantID, trimmedConversationID)
-	if err != nil {
-		return ConversationDetail{}, false, err
-	}
-	mergedGenerations := mergeGenerationsPreferHot(hotGenerations, coldGenerations)
 
 	generationPayloads := make([]map[string]any, 0, len(mergedGenerations))
 	for _, generation := range mergedGenerations {
@@ -743,16 +752,14 @@ func (s *Service) GetGenerationDetailForTenant(ctx context.Context, tenantID, ge
 	if s.walReader == nil {
 		return nil, false, errors.New("wal reader is not configured")
 	}
+	fanOutStore := s.fanOutStore
+	if fanOutStore == nil {
+		fanOutStore = storage.NewFanOutStore(s.walReader, nil, nil)
+	}
 
-	generation, err := s.walReader.GetByID(ctx, trimmedTenantID, trimmedGenerationID)
+	generation, err := fanOutStore.GetGenerationByID(ctx, trimmedTenantID, trimmedGenerationID)
 	if err != nil {
 		return nil, false, err
-	}
-	if generation == nil {
-		generation, err = s.loadColdGenerationByID(ctx, trimmedTenantID, trimmedGenerationID)
-		if err != nil {
-			return nil, false, err
-		}
 	}
 	if generation == nil {
 		return nil, false, nil
@@ -944,71 +951,6 @@ func (s *Service) loadConversationSearchMetadata(
 	return metadata, ratingSummaries, annotationSummaries, nil
 }
 
-func (s *Service) loadColdGenerationByID(ctx context.Context, tenantID, generationID string) (*sigilv1.Generation, error) {
-	if s.blockMetadataStore == nil || s.blockReader == nil {
-		return nil, nil
-	}
-
-	blocks, err := s.blockMetadataStore.ListBlocks(ctx, tenantID, time.Time{}, time.Time{})
-	if err != nil {
-		return nil, err
-	}
-	for idx := len(blocks) - 1; idx >= 0; idx-- {
-		index, err := s.blockReader.ReadIndex(ctx, tenantID, blocks[idx].BlockID)
-		if err != nil {
-			return nil, err
-		}
-		entries := object.FindEntriesByGenerationID(index, generationID)
-		if len(entries) == 0 {
-			continue
-		}
-		generations, err := s.blockReader.ReadGenerations(ctx, tenantID, blocks[idx].BlockID, entries)
-		if err != nil {
-			return nil, err
-		}
-		for _, generation := range generations {
-			if generation.GetId() == generationID {
-				return generation, nil
-			}
-		}
-	}
-	return nil, nil
-}
-
-func (s *Service) loadColdConversationGenerations(ctx context.Context, tenantID, conversationID string) ([]*sigilv1.Generation, error) {
-	if s.blockMetadataStore == nil || s.blockReader == nil {
-		return []*sigilv1.Generation{}, nil
-	}
-
-	blocks, err := s.blockMetadataStore.ListBlocks(ctx, tenantID, time.Time{}, time.Time{})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]*sigilv1.Generation, 0)
-	for _, block := range blocks {
-		index, err := s.blockReader.ReadIndex(ctx, tenantID, block.BlockID)
-		if err != nil {
-			return nil, err
-		}
-		entries := object.FindEntriesByConversationID(index, conversationID)
-		if len(entries) == 0 {
-			continue
-		}
-		generations, err := s.blockReader.ReadGenerations(ctx, tenantID, block.BlockID, entries)
-		if err != nil {
-			return nil, err
-		}
-		for _, generation := range generations {
-			// Block index lookups are hash-based; always re-check IDs to avoid hash-collision bleed.
-			if generation.GetConversationId() != conversationID {
-				continue
-			}
-			out = append(out, generation)
-		}
-	}
-	return out, nil
-}
-
 func (s *Service) listAllConversationAnnotations(ctx context.Context, tenantID, conversationID string) ([]feedback.ConversationAnnotation, error) {
 	if s.annotationEventStore == nil {
 		return []feedback.ConversationAnnotation{}, nil
@@ -1150,37 +1092,6 @@ func buildSelectedResultMap(selected map[string]*tempoSelectedAggregation) map[s
 	if len(out) == 0 {
 		return nil
 	}
-	return out
-}
-
-func mergeGenerationsPreferHot(hotGenerations, coldGenerations []*sigilv1.Generation) []*sigilv1.Generation {
-	byID := make(map[string]*sigilv1.Generation, len(hotGenerations)+len(coldGenerations))
-	for _, generation := range coldGenerations {
-		if generation == nil || strings.TrimSpace(generation.GetId()) == "" {
-			continue
-		}
-		byID[generation.GetId()] = generation
-	}
-	for _, generation := range hotGenerations {
-		if generation == nil || strings.TrimSpace(generation.GetId()) == "" {
-			continue
-		}
-		// Hot rows win when a generation exists in both stores during retention overlap.
-		byID[generation.GetId()] = generation
-	}
-
-	out := make([]*sigilv1.Generation, 0, len(byID))
-	for _, generation := range byID {
-		out = append(out, generation)
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		leftTime := generationTimestamp(out[i])
-		rightTime := generationTimestamp(out[j])
-		if leftTime.Equal(rightTime) {
-			return out[i].GetId() < out[j].GetId()
-		}
-		return leftTime.Before(rightTime)
-	})
 	return out
 }
 

@@ -14,7 +14,7 @@ It combines OpenTelemetry traces with normalized LLM generation data, so you can
 
 - Grafana app plugin (`/apps/plugin`) for conversations, completions, traces, and settings.
 - Go service (`/sigil`) for generation ingest and query APIs on `:8080`.
-- (Planned) Evaluations: offline experiments (datasets/regressions) and online evaluation (live scoring on production traffic). See `docs/references/ai-observability-evaluation-market.md`.
+- Evaluations: online evaluation (live scoring on production traffic) is supported; offline experiments (datasets/regressions) are planned. See `docs/references/ai-observability-evaluation-market.md`.
 - SDKs (`/sdks`) for Go, Python, TypeScript/JavaScript, Java, and .NET/C#:
   - OTel traces with AI-specific attributes (`gen_ai.*`).
   - OTel metrics: latency histograms and token usage distributions.
@@ -100,6 +100,20 @@ Local default runs with anonymous Grafana auth enabled.
 curl -s http://localhost:8080/healthz
 curl -s http://localhost:8080/api/v1/conversations
 curl -s http://localhost:8080/api/v1/completions
+```
+
+### 6. Run local hot/cold storage E2E
+
+With `mise run up` still running in another terminal:
+
+```bash
+mise run test:e2e:storage-local
+```
+
+If compaction is slower on your machine, increase the wait budget:
+
+```bash
+SIGIL_E2E_COMPACTION_WAIT=5m mise run test:e2e:storage-local
 ```
 
 ## Deploy On Kubernetes (Helm)

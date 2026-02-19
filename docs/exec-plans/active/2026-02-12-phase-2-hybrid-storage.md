@@ -75,20 +75,21 @@ Deliver durable generation storage with hot WAL writes, background object-storag
 
 ### Phase D: Fan-out query path
 
-Current status (2026-02-19): hot+cold merge behavior is implemented inline in `query.Service`; dedicated `storage.FanOutStore` abstraction and parallel read execution are still pending.
+Current status (2026-02-19): fan-out reads are handled by `storage.FanOutStore` with parallel hot+cold execution, deterministic merge semantics, Prometheus timing metrics, and benchmark coverage.
 
-- [ ] Implement `storage.FanOutStore` (`WALReader` + `BlockReader` + `BlockMetadataStore`).
-- [ ] Parallelize hot and cold reads.
+- [x] Implement `storage.FanOutStore` (`WALReader` + `BlockReader` + `BlockMetadataStore`).
+- [x] Parallelize hot and cold reads.
 - [x] Union and dedupe by `generation_id` with hot-row preference.
 - [x] Sort merged results by `created_at`.
 - [x] Replace placeholder query behavior with fan-out-backed path.
-- [ ] Add query fan-out metrics and logs.
-- [ ] Add explicit tests for hot-only and tenant-isolation fan-out cases (mixed overlap and cold fallback are covered).
-- [ ] Add fan-out benchmarks.
+- [x] Add query fan-out metrics and logs.
+- [x] Add explicit tests for hot-only and tenant-isolation fan-out cases (mixed overlap and cold fallback are covered).
+- [x] Add fan-out benchmarks.
 
 ### Phase E: Docs, benchmarks, and cleanup
 
-- [ ] Add `mise run bench:storage` task.
+- [x] Add `mise run bench:storage` task.
+- [x] Add local compose-backed E2E test for batch ingest + hot/cold query round-trip (`sigil/e2e/storage_hot_cold_local_test.go`, `mise run test:e2e:storage-local`).
 - [ ] Update `ARCHITECTURE.md` with finalized runtime/module/storage contracts.
 - [ ] Update `docs/design-docs/2026-02-12-phase-2-hybrid-storage.md` with implementation deltas.
 - [x] Update `docs/generated/db-schema.md` from implemented migrations.

@@ -570,8 +570,7 @@ func TestGetConversationDetailForTenantMergesHotAndCold(t *testing.T) {
 
 	service := NewServiceWithStores(conversationStore, feedbackStore)
 	service.walReader = walReader
-	service.blockMetadataStore = blockMetadataStore
-	service.blockReader = blockReader
+	service.fanOutStore = storage.NewFanOutStore(walReader, blockMetadataStore, blockReader)
 
 	detail, found, err := service.GetConversationDetailForTenant(context.Background(), "tenant-a", "conv-1")
 	if err != nil {
@@ -598,6 +597,113 @@ func TestGetConversationDetailForTenantMergesHotAndCold(t *testing.T) {
 	}
 	if detail.RatingSummary == nil || detail.RatingSummary.TotalCount != 1 {
 		t.Fatalf("expected rating summary total_count=1, got %#v", detail.RatingSummary)
+	}
+}
+
+func TestGetConversationDetailForTenantHotOnlyFanOut(t *testing.T) {
+	base := time.Date(2026, 2, 15, 9, 0, 0, 0, time.UTC)
+	conversationStore := &stubConversationStore{
+		items: map[string]storage.Conversation{
+			"conv-hot": {
+				TenantID:         "tenant-a",
+				ConversationID:   "conv-hot",
+				GenerationCount:  2,
+				CreatedAt:        base,
+				LastGenerationAt: base.Add(2 * time.Minute),
+				UpdatedAt:        base.Add(2 * time.Minute),
+			},
+		},
+	}
+
+	hotGeneration1 := testGenerationPayload("gen-1", "conv-hot", base.Add(time.Minute))
+	hotGeneration2 := testGenerationPayload("gen-2", "conv-hot", base.Add(2*time.Minute))
+	walReader := &stubWALReader{
+		byConversationByTenant: map[string]map[string][]*sigilv1.Generation{
+			"tenant-a": {"conv-hot": {hotGeneration1, hotGeneration2}},
+		},
+	}
+
+	service := NewService()
+	service.conversationStore = conversationStore
+	service.walReader = walReader
+	service.fanOutStore = storage.NewFanOutStore(walReader, nil, nil)
+
+	detail, found, err := service.GetConversationDetailForTenant(context.Background(), "tenant-a", "conv-hot")
+	if err != nil {
+		t.Fatalf("get conversation detail: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected conversation detail to be found")
+	}
+	if len(detail.Generations) != 2 {
+		t.Fatalf("expected 2 hot generations, got %d", len(detail.Generations))
+	}
+
+	firstID, _ := detail.Generations[0]["generation_id"].(string)
+	secondID, _ := detail.Generations[1]["generation_id"].(string)
+	if firstID != "gen-1" || secondID != "gen-2" {
+		t.Fatalf("unexpected generation order: %#v", detail.Generations)
+	}
+}
+
+func TestGetConversationDetailForTenantFanOutTenantIsolation(t *testing.T) {
+	base := time.Date(2026, 2, 15, 9, 0, 0, 0, time.UTC)
+	conversationStore := &stubConversationStore{
+		items: map[string]storage.Conversation{
+			"conv-shared": {
+				TenantID:         "tenant-a",
+				ConversationID:   "conv-shared",
+				GenerationCount:  1,
+				CreatedAt:        base,
+				LastGenerationAt: base.Add(time.Minute),
+				UpdatedAt:        base.Add(time.Minute),
+			},
+		},
+	}
+
+	hotGenerationTenantA := testGenerationPayload("gen-a-hot", "conv-shared", base.Add(time.Minute))
+	hotGenerationTenantB := testGenerationPayload("gen-b-hot", "conv-shared", base.Add(2*time.Minute))
+	walReader := &stubWALReader{
+		byConversationByTenant: map[string]map[string][]*sigilv1.Generation{
+			"tenant-a": {"conv-shared": {hotGenerationTenantA}},
+			"tenant-b": {"conv-shared": {hotGenerationTenantB}},
+		},
+	}
+
+	coldGenerationTenantB := testGenerationPayload("gen-b-cold", "conv-shared", base.Add(3*time.Minute))
+	blockIDTenantB, indexTenantB, generationsByOffsetTenantB := buildIndexedBlock(t, []*sigilv1.Generation{coldGenerationTenantB})
+	blockMetadataStore := &stubBlockMetadataStore{
+		blocksByTenant: map[string][]storage.BlockMeta{
+			"tenant-a": {},
+			"tenant-b": {{TenantID: "tenant-b", BlockID: blockIDTenantB}},
+		},
+	}
+	blockReader := &stubBlockReader{
+		indexesByTenant: map[string]map[string]*storage.BlockIndex{
+			"tenant-b": {blockIDTenantB: indexTenantB},
+		},
+		generationsByOffsetByTenant: map[string]map[string]map[int64]*sigilv1.Generation{
+			"tenant-b": {blockIDTenantB: generationsByOffsetTenantB},
+		},
+	}
+
+	service := NewService()
+	service.conversationStore = conversationStore
+	service.walReader = walReader
+	service.fanOutStore = storage.NewFanOutStore(walReader, blockMetadataStore, blockReader)
+
+	detail, found, err := service.GetConversationDetailForTenant(context.Background(), "tenant-a", "conv-shared")
+	if err != nil {
+		t.Fatalf("get conversation detail: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected conversation detail to be found")
+	}
+	if len(detail.Generations) != 1 {
+		t.Fatalf("expected tenant-scoped fan-out to return one generation, got %d", len(detail.Generations))
+	}
+	if detail.Generations[0]["generation_id"] != "gen-a-hot" {
+		t.Fatalf("unexpected generation payload: %#v", detail.Generations[0])
 	}
 }
 
@@ -680,8 +786,11 @@ func TestGetGenerationDetailForTenantFallsBackToColdStorage(t *testing.T) {
 
 	service := NewService()
 	service.walReader = &stubWALReader{byID: map[string]*sigilv1.Generation{}}
-	service.blockMetadataStore = &stubBlockMetadataStore{blocks: []storage.BlockMeta{{TenantID: "tenant-a", BlockID: blockID}}}
-	service.blockReader = &stubBlockReader{indexes: map[string]*storage.BlockIndex{blockID: index}, generationsByOffset: map[string]map[int64]*sigilv1.Generation{blockID: generationsByOffset}}
+	service.fanOutStore = storage.NewFanOutStore(
+		service.walReader,
+		&stubBlockMetadataStore{blocks: []storage.BlockMeta{{TenantID: "tenant-a", BlockID: blockID}}},
+		&stubBlockReader{indexes: map[string]*storage.BlockIndex{blockID: index}, generationsByOffset: map[string]map[int64]*sigilv1.Generation{blockID: generationsByOffset}},
+	)
 
 	payload, found, err := service.GetGenerationDetailForTenant(context.Background(), "tenant-a", "gen-cold")
 	if err != nil {
@@ -824,18 +933,41 @@ func (s *stubConversationStore) GetConversation(_ context.Context, tenantID, con
 }
 
 type stubWALReader struct {
-	byID           map[string]*sigilv1.Generation
-	byConversation map[string][]*sigilv1.Generation
+	byID                     map[string]*sigilv1.Generation
+	byConversation           map[string][]*sigilv1.Generation
+	byIDByTenant             map[string]map[string]*sigilv1.Generation
+	byConversationByTenant   map[string]map[string][]*sigilv1.Generation
+	requestedGenerationIDs   []string
+	requestedConversationIDs []string
+	requestedTenants         []string
 }
 
-func (s *stubWALReader) GetByID(_ context.Context, _ string, generationID string) (*sigilv1.Generation, error) {
+func (s *stubWALReader) GetByID(_ context.Context, tenantID, generationID string) (*sigilv1.Generation, error) {
+	s.requestedTenants = append(s.requestedTenants, tenantID)
+	s.requestedGenerationIDs = append(s.requestedGenerationIDs, generationID)
+	if s.byIDByTenant != nil {
+		tenantItems, ok := s.byIDByTenant[tenantID]
+		if !ok {
+			return nil, nil
+		}
+		return tenantItems[generationID], nil
+	}
 	if s.byID == nil {
 		return nil, nil
 	}
 	return s.byID[generationID], nil
 }
 
-func (s *stubWALReader) GetByConversationID(_ context.Context, _ string, conversationID string) ([]*sigilv1.Generation, error) {
+func (s *stubWALReader) GetByConversationID(_ context.Context, tenantID, conversationID string) ([]*sigilv1.Generation, error) {
+	s.requestedTenants = append(s.requestedTenants, tenantID)
+	s.requestedConversationIDs = append(s.requestedConversationIDs, conversationID)
+	if s.byConversationByTenant != nil {
+		tenantItems, ok := s.byConversationByTenant[tenantID]
+		if !ok {
+			return []*sigilv1.Generation{}, nil
+		}
+		return tenantItems[conversationID], nil
+	}
 	if s.byConversation == nil {
 		return []*sigilv1.Generation{}, nil
 	}
@@ -843,23 +975,47 @@ func (s *stubWALReader) GetByConversationID(_ context.Context, _ string, convers
 }
 
 type stubBlockMetadataStore struct {
-	blocks []storage.BlockMeta
+	blocks         []storage.BlockMeta
+	blocksByTenant map[string][]storage.BlockMeta
 }
 
 func (s *stubBlockMetadataStore) InsertBlock(_ context.Context, _ storage.BlockMeta) error {
 	return errors.New("not implemented")
 }
 
-func (s *stubBlockMetadataStore) ListBlocks(_ context.Context, _ string, _, _ time.Time) ([]storage.BlockMeta, error) {
-	return s.blocks, nil
+func (s *stubBlockMetadataStore) ListBlocks(_ context.Context, tenantID string, _, _ time.Time) ([]storage.BlockMeta, error) {
+	if s.blocksByTenant != nil {
+		return append([]storage.BlockMeta(nil), s.blocksByTenant[tenantID]...), nil
+	}
+	out := make([]storage.BlockMeta, 0, len(s.blocks))
+	for _, block := range s.blocks {
+		if strings.TrimSpace(block.TenantID) != "" && block.TenantID != tenantID {
+			continue
+		}
+		out = append(out, block)
+	}
+	return out, nil
 }
 
 type stubBlockReader struct {
-	indexes             map[string]*storage.BlockIndex
-	generationsByOffset map[string]map[int64]*sigilv1.Generation
+	indexes                     map[string]*storage.BlockIndex
+	indexesByTenant             map[string]map[string]*storage.BlockIndex
+	generationsByOffset         map[string]map[int64]*sigilv1.Generation
+	generationsByOffsetByTenant map[string]map[string]map[int64]*sigilv1.Generation
 }
 
-func (s *stubBlockReader) ReadIndex(_ context.Context, _ string, blockID string) (*storage.BlockIndex, error) {
+func (s *stubBlockReader) ReadIndex(_ context.Context, tenantID, blockID string) (*storage.BlockIndex, error) {
+	if s.indexesByTenant != nil {
+		tenantIndexes, ok := s.indexesByTenant[tenantID]
+		if !ok {
+			return nil, errors.New("missing tenant indexes")
+		}
+		index, ok := tenantIndexes[blockID]
+		if !ok {
+			return nil, errors.New("missing index")
+		}
+		return index, nil
+	}
 	index, ok := s.indexes[blockID]
 	if !ok {
 		return nil, errors.New("missing index")
@@ -867,8 +1023,20 @@ func (s *stubBlockReader) ReadIndex(_ context.Context, _ string, blockID string)
 	return index, nil
 }
 
-func (s *stubBlockReader) ReadGenerations(_ context.Context, _ string, blockID string, entries []storage.IndexEntry) ([]*sigilv1.Generation, error) {
-	byOffset, ok := s.generationsByOffset[blockID]
+func (s *stubBlockReader) ReadGenerations(_ context.Context, tenantID, blockID string, entries []storage.IndexEntry) ([]*sigilv1.Generation, error) {
+	var (
+		byOffset map[int64]*sigilv1.Generation
+		ok       bool
+	)
+	if s.generationsByOffsetByTenant != nil {
+		tenantGenerations, tenantOK := s.generationsByOffsetByTenant[tenantID]
+		if !tenantOK {
+			return nil, errors.New("missing tenant generations")
+		}
+		byOffset, ok = tenantGenerations[blockID]
+	} else {
+		byOffset, ok = s.generationsByOffset[blockID]
+	}
 	if !ok {
 		return nil, errors.New("missing block generations")
 	}
