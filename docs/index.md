@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-18
+last_reviewed: 2026-02-19
 source_of_truth: true
 audience: both
 ---
@@ -41,10 +41,9 @@ This is the canonical navigation map for repository documentation.
 - Execution plans:
   - Active: `exec-plans/active/`
     - Drafts: `exec-plans/active/drafts/`
-  - Current implementation priority: query proxy, then hybrid storage/query behavior, then compaction scaling and cross-track consistency
+  - Current implementation priority: hybrid storage/query behavior, then compaction scaling and cross-track consistency
   - Phase 2 umbrella coordinator: `exec-plans/active/2026-02-12-phase-2-delivery.md`
   - Phase 2 parallel tracks:
-    - `exec-plans/active/2026-02-12-phase-2-query-proxy.md`
     - `exec-plans/active/2026-02-12-phase-2-hybrid-storage.md`
     - `exec-plans/active/2026-02-13-compaction-scaling.md`
   - Completed: `exec-plans/completed/`
@@ -56,6 +55,7 @@ This is the canonical navigation map for repository documentation.
     - `exec-plans/completed/2026-02-12-phase-2-sdk-parity-typescript-javascript.md`
     - `exec-plans/completed/2026-02-13-phase-2-sdk-parity-dotnet-csharp.md`
     - `exec-plans/completed/2026-02-12-phase-2-tenant-boundary.md`
+    - `exec-plans/completed/2026-02-12-phase-2-query-proxy.md`
     - `exec-plans/completed/2026-02-13-sdk-parity-java.md`
     - `exec-plans/completed/2026-02-13-openai-chat-responses-strict-parity.md`
     - `exec-plans/completed/2026-02-13-all-providers-strict-helper-mapper-parity.md`
@@ -63,7 +63,6 @@ This is the canonical navigation map for repository documentation.
     - `exec-plans/completed/2026-02-15-conversation-query-path.md`
     - `exec-plans/completed/2026-02-17-online-evaluation.md`
     - `exec-plans/completed/2026-02-17-embedding-call-observability.md`
-    - `exec-plans/completed/2026-02-17-online-evaluation.md`
   - Tech debt tracker: [`exec-plans/tech-debt-tracker.md`](exec-plans/tech-debt-tracker.md)
 - Generated docs: [`generated/db-schema.md`](generated/db-schema.md)
 - External references: [`references/index.md`](references/index.md)

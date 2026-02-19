@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
-status: active
-last_reviewed: 2026-02-14
+status: completed
+last_reviewed: 2026-02-19
 source_of_truth: true
 audience: both
 ---
@@ -14,8 +14,8 @@ Deliver plugin-proxy-only query routing with Grafana-compatible query envelopes 
 
 ## Scope
 
-- Sigil API query endpoint contract.
-- Plugin backend resource proxy contract.
+- Endpoint-specific Sigil API query contracts (conversations/generations/search and downstream proxy prefixes).
+- Plugin backend resource proxy contracts under `/api/plugins/grafana-sigil-app/resources/query/...`.
 - Query response envelope and frame compatibility requirements for metrics and traces.
 
 ## Source Design Doc
@@ -29,18 +29,20 @@ Deliver plugin-proxy-only query routing with Grafana-compatible query envelopes 
 - [x] Forward downstream `X-Scope-OrgID` from Sigil tenant context (auth tenant or fake-tenant mode).
 - [x] Add local tests for proxy routing, allowlist/method enforcement, tenant propagation, and upstream failure handling.
 - [x] Wire plugin backend resource routes to consume Sigil proxy endpoints via `/query/proxy/prometheus/...` and `/query/proxy/tempo/...`; legacy plugin `query/traces/{trace_id}` route removed.
-- [ ] Define Sigil query API contract: `POST /api/v1/query`.
-- [ ] Define plugin resource proxy contract: `POST /api/plugins/grafana-sigil-app/resources/query`.
-- [ ] Require frontend query calls to use plugin proxy only.
-- [ ] Require `QueryDataResponse` envelope with `results.<refId>.frames`.
-- [ ] Define metrics frame compatibility requirements (time/value + metadata for graph/table).
-- [ ] Define trace detail frame compatibility requirements (`preferredVisualisationType: trace` + trace fields/meta shape).
-- [ ] Define trace search frame compatibility requirements (Tempo/Grafana table conventions).
-- [ ] Anchor compatibility requirements to `docs/references/grafana-query-response-shapes.md`.
-- [ ] Document required local test scenarios:
+- [x] Define endpoint-specific Sigil query contracts and proxy prefixes.
+- [x] Define endpoint-specific plugin resource proxy contracts under `/api/plugins/grafana-sigil-app/resources/query/...`.
+- [x] Require frontend query calls to use plugin proxy only.
+- [x] Require `QueryDataResponse` envelope with `results.<refId>.frames`.
+- [x] Define metrics frame compatibility requirements (time/value + metadata for graph/table).
+- [x] Define trace detail frame compatibility requirements (`preferredVisualisationType: trace` + trace fields/meta shape).
+- [x] Define trace search frame compatibility requirements (Tempo/Grafana table conventions).
+- [x] Anchor compatibility requirements to `docs/references/grafana-query-response-shapes.md`.
+- [x] Document required local test scenarios:
   - response serialization as `QueryDataResponse`
   - frame compatibility for metrics and traces
   - plugin frontend path enforcement through resource proxy only
+- [x] Decision (2026-02-19): de-scope generic `POST /api/v1/query` and `POST /api/plugins/grafana-sigil-app/resources/query` from Phase 2; keep endpoint-specific query/resource routes as the canonical contract.
+- [x] Record this decision in design/reference docs and execution plan indexes.
 
 ## Risks
 
@@ -57,3 +59,4 @@ Deliver plugin-proxy-only query routing with Grafana-compatible query envelopes 
 ## Out of Scope
 
 - Non-REST query transport in this phase.
+- Generic catch-all query endpoints (`POST /api/v1/query` and `POST /api/plugins/grafana-sigil-app/resources/query`) in this phase.

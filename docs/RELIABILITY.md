@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-12
+last_reviewed: 2026-02-19
 source_of_truth: true
 audience: both
 ---
@@ -62,14 +62,14 @@ Tempo-first search/query workflows must degrade predictably when Tempo is unavai
 Current status:
 
 - Go OTLP ingest integration coverage exists for gRPC ingest path.
-- Python and TypeScript/JavaScript OTLP ingest integration coverage is still missing.
+- Python and TypeScript/JavaScript OTLP ingest integration coverage exists.
 - Tempo forwarding integration coverage now exists for HTTP and gRPC ingest paths.
 
 ## Deferred Reliability Work
 
 - Baseline CI enforcement exists for formatting, linting, and type checks (`mise run ci`).
 - CI expansion for automated test/e2e enforcement remains tracked in tech debt.
-- benchmark and payload-size guardrails remain tracked until implemented.
+- ingest benchmark and payload-size guardrail tests are in place; CI regression policy wiring remains tracked in tech debt.
 
 ## Update Cadence
 

@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-12
+last_reviewed: 2026-02-19
 source_of_truth: true
 audience: both
 ---
@@ -75,11 +75,13 @@ Deliver durable generation storage with hot WAL writes, background object-storag
 
 ### Phase D: Fan-out query path
 
+Current status (2026-02-19): hot+cold merge behavior is implemented inline in `query.Service`; dedicated `storage.FanOutStore` abstraction and parallel read execution are still pending.
+
 - [ ] Implement `storage.FanOutStore` (`WALReader` + `BlockReader` + `BlockMetadataStore`).
 - [ ] Parallelize hot and cold reads.
 - [ ] Union and dedupe by `generation_id` with hot-row preference.
 - [ ] Sort merged results by `created_at`.
-- [ ] Replace placeholder query behavior with fan-out-backed path.
+- [x] Replace placeholder query behavior with fan-out-backed path.
 - [ ] Add query fan-out metrics and logs.
 - [ ] Add tests for hot-only, cold-only, mixed overlap, and tenant isolation cases.
 - [ ] Add fan-out benchmarks.
@@ -89,10 +91,10 @@ Deliver durable generation storage with hot WAL writes, background object-storag
 - [ ] Add `mise run bench:storage` task.
 - [ ] Update `ARCHITECTURE.md` with finalized runtime/module/storage contracts.
 - [ ] Update `docs/design-docs/2026-02-12-phase-2-hybrid-storage.md` with implementation deltas.
-- [ ] Update `docs/generated/db-schema.md` from implemented migrations.
+- [x] Update `docs/generated/db-schema.md` from implemented migrations.
 - [ ] Capture baseline benchmark numbers in `docs/references/storage-benchmarks.md`.
 - [ ] Update this plan checkboxes as each phase lands.
-- [ ] Record deferred work in `docs/exec-plans/tech-debt-tracker.md` (ring sharding, Kafka WAL migration).
+- [x] Record deferred work in `docs/exec-plans/tech-debt-tracker.md` (ring sharding, Kafka WAL migration).
 
 ## Risks
 

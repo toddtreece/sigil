@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-17
+last_reviewed: 2026-02-19
 source_of_truth: true
 audience: both
 ---
@@ -18,12 +18,13 @@ audience: both
 | SDK parity (TypeScript/JavaScript) | `exec-plans/completed/2026-02-12-phase-2-sdk-parity-typescript-javascript.md` | Done |
 | SDK parity (.NET/C#) | `exec-plans/completed/2026-02-13-phase-2-sdk-parity-dotnet-csharp.md` | Done |
 | Tenant boundary | `exec-plans/completed/2026-02-12-phase-2-tenant-boundary.md` | Done |
-| Query proxy and envelope | `exec-plans/active/2026-02-12-phase-2-query-proxy.md` | Active |
+| Query proxy and envelope | `exec-plans/completed/2026-02-12-phase-2-query-proxy.md` | Done |
 | Hybrid storage and query | `exec-plans/active/2026-02-12-phase-2-hybrid-storage.md` | Active |
+| Compaction scaling | `exec-plans/active/2026-02-13-compaction-scaling.md` | Active |
 | SDK metrics and telemetry pipeline | `exec-plans/completed/2026-02-13-sdk-metrics-and-telemetry-pipeline.md` | Done |
 | Embedding call observability | `exec-plans/completed/2026-02-17-embedding-call-observability.md` | Done |
 
-Execution order: (1) query proxy, then (2) hybrid storage, then (3) compaction scaling + cross-track consistency and tech debt capture. Parallel planning remains allowed within that order.
+Execution order status: query proxy is complete; remaining priority is (1) hybrid storage, then (2) compaction scaling + cross-track consistency and tech debt capture. Parallel planning remains allowed within that order.
 
 ## Goal
 
@@ -42,7 +43,7 @@ Coordinate decision-complete Phase 2 delivery across parallel workstreams:
 
 ## Coordination Tasks
 
-- [ ] Keep all workstream plans synchronized with:
+- [x] Keep all workstream plans synchronized with:
   - `docs/design-docs/2026-02-12-phase-2-otel-sdk-query-storage.md`
   - `docs/design-docs/2026-02-12-phase-2-sdk-parity-python.md`
   - `docs/design-docs/2026-02-12-phase-2-sdk-parity-typescript-javascript.md`
@@ -50,8 +51,8 @@ Coordinate decision-complete Phase 2 delivery across parallel workstreams:
   - `docs/design-docs/2026-02-12-phase-2-tenant-boundary.md`
   - `docs/design-docs/2026-02-12-phase-2-query-proxy.md`
   - `docs/design-docs/2026-02-12-phase-2-hybrid-storage.md`
-- [ ] Keep navigation indexes synchronized (`docs/index.md`, `docs/design-docs/index.md`, references indexes when contracts move).
-- [ ] Ensure local test scenario coverage remains explicitly documented across all workstreams.
+- [x] Keep navigation indexes synchronized (`docs/index.md`, `docs/design-docs/index.md`, references indexes when contracts move).
+- [x] Ensure local test scenario coverage remains explicitly documented across all workstreams.
 - [ ] Keep CI scope boundaries (quality gates live, test/e2e expansion deferred) and ingestion-log evolution tracked in `docs/exec-plans/tech-debt-tracker.md`.
 
 ## Dependency Order

@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
-status: active
-last_reviewed: 2026-02-14
+status: completed
+last_reviewed: 2026-02-19
 source_of_truth: true
 audience: both
 ---
@@ -16,8 +16,15 @@ This workstream isolates plugin-proxy query contracts and frame shape compatibil
 
 All query operations must go through plugin backend proxy handlers.
 
-- Sigil API query contract: `POST /api/v1/query`
-- Plugin resource proxy contract: `POST /api/plugins/grafana-sigil-app/resources/query`
+- Sigil API endpoint-specific query contracts:
+  - `POST /api/v1/conversations/search`
+  - `GET /api/v1/conversations/{conversation_id}`
+  - `GET /api/v1/generations/{generation_id}`
+  - `GET /api/v1/search/tags`
+  - `GET /api/v1/search/tag/{tag}/values`
+  - `/api/v1/proxy/prometheus/...`
+  - `/api/v1/proxy/tempo/...`
+- Plugin resource endpoint-specific contracts under `/api/plugins/grafana-sigil-app/resources/query/...`.
 
 Plugin frontend must not call Sigil API query endpoints directly.
 
@@ -34,7 +41,9 @@ Sigil now exposes pass-through proxy routes for Prometheus/Mimir and Tempo query
   - downstream `X-Scope-OrgID` is always sourced from Sigil tenant context (real tenant or fake tenant mode)
   - safe request-header allowlist forwarding with hop-by-hop stripping
 
-Plugin backend integration to consume these Sigil proxy routes remains tracked separately as tech debt.
+Plugin backend integration for these Sigil proxy routes is implemented via `/api/plugins/grafana-sigil-app/resources/query/proxy/{backend}/...`.
+
+Decision (2026-02-19): Phase 2 de-scopes generic catch-all query endpoints (`POST /api/v1/query` and `POST /api/plugins/grafana-sigil-app/resources/query`) in favor of endpoint-specific query/resource contracts.
 
 ## Envelope contract
 

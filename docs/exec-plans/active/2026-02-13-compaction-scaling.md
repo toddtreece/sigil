@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-17
+last_reviewed: 2026-02-19
 source_of_truth: true
 audience: both
 ---
@@ -86,6 +86,8 @@ Deliver sub-tenant sharded compaction so that a single hot tenant can scale acro
 - [x] Add unit tests for block size accumulation behavior.
 
 ### Phase E: Integration tests, benchmarks, and instrumentation
+
+Current status (2026-02-19): benchmark implementations are complete; baseline numbers are still pending capture in repository docs/tasks.
 
 - [x] Add/update Prometheus metrics: `claim_batch_total`, `claim_stale_recovered_total`, `worker_active`, `shard_backlog`, `drain_duration_seconds`, `lease_held` with shard label.
 - [x] Add integration test: multiple compactor instances compacting same tenant with `shard_count > 1`.

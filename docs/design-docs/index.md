@@ -1,7 +1,7 @@
 ---
 owner: sigil-core
 status: active
-last_reviewed: 2026-02-17
+last_reviewed: 2026-02-19
 source_of_truth: true
 audience: agents
 ---
@@ -22,7 +22,7 @@ This folder stores durable engineering decisions for Sigil.
 - [`2026-02-12-phase-2-sdk-parity-typescript-javascript.md`](2026-02-12-phase-2-sdk-parity-typescript-javascript.md) (completed)
 - [`2026-02-13-phase-2-sdk-parity-dotnet-csharp.md`](2026-02-13-phase-2-sdk-parity-dotnet-csharp.md) (completed)
 - [`2026-02-12-phase-2-tenant-boundary.md`](2026-02-12-phase-2-tenant-boundary.md) (completed)
-- [`2026-02-12-phase-2-query-proxy.md`](2026-02-12-phase-2-query-proxy.md)
+- [`2026-02-12-phase-2-query-proxy.md`](2026-02-12-phase-2-query-proxy.md) (completed)
 - [`2026-02-12-phase-2-hybrid-storage.md`](2026-02-12-phase-2-hybrid-storage.md)
 - [`2026-02-13-compaction-scaling.md`](2026-02-13-compaction-scaling.md)
 - [`2026-02-13-sdk-metrics-and-telemetry-pipeline.md`](2026-02-13-sdk-metrics-and-telemetry-pipeline.md) (completed)
