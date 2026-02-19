@@ -79,11 +79,11 @@ Current status (2026-02-19): hot+cold merge behavior is implemented inline in `q
 
 - [ ] Implement `storage.FanOutStore` (`WALReader` + `BlockReader` + `BlockMetadataStore`).
 - [ ] Parallelize hot and cold reads.
-- [ ] Union and dedupe by `generation_id` with hot-row preference.
-- [ ] Sort merged results by `created_at`.
+- [x] Union and dedupe by `generation_id` with hot-row preference.
+- [x] Sort merged results by `created_at`.
 - [x] Replace placeholder query behavior with fan-out-backed path.
 - [ ] Add query fan-out metrics and logs.
-- [ ] Add tests for hot-only, cold-only, mixed overlap, and tenant isolation cases.
+- [ ] Add explicit tests for hot-only and tenant-isolation fan-out cases (mixed overlap and cold fallback are covered).
 - [ ] Add fan-out benchmarks.
 
 ### Phase E: Docs, benchmarks, and cleanup
