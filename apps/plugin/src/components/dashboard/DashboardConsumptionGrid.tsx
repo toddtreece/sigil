@@ -10,7 +10,7 @@ import {
   type PrometheusQueryResponse,
   breakdownToPromLabel,
 } from '../../dashboard/types';
-import { StatItem, extractResolvePairs, BreakdownStatPanel } from './dashboardShared';
+import { StatItem, extractResolvePairs, BreakdownStatPanel, ProviderMappingBadgeRow } from './dashboardShared';
 import { calculateTotalCost, calculateTotalCostByGroup, calculateCostTimeSeries } from '../../dashboard/cost';
 import {
   computeStep,
@@ -231,6 +231,7 @@ export function DashboardConsumptionGrid({
           loading={costTokensData.loading || resolvedPricing.loading}
         />
       </div>
+      <ProviderMappingBadgeRow mapped={resolvedPricing.mapped} />
 
       <div className={styles.grid}>
         {/* Row 1: Tokens by type over time + Tokens by type breakdown */}
