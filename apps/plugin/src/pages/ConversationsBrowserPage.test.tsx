@@ -128,16 +128,17 @@ describe('ConversationsBrowserPage', () => {
     const { router } = renderPage(dataSource);
 
     await waitFor(() => expect(dataSource.searchConversations).toHaveBeenCalledTimes(2));
-    expect(dataSource.searchConversations.mock.calls[0][0].select).toContain('span.gen_ai.usage.total_tokens');
+    expect(dataSource.searchConversations.mock.calls[0][0].select).toContain('span.sigil.sdk.name');
+    expect(dataSource.searchConversations.mock.calls[0][0].select).toHaveLength(1);
 
     expect(await screen.findByLabelText('select conversation conv-a')).toBeInTheDocument();
     expect(screen.queryByText('Conversation ID')).not.toBeInTheDocument();
     expect(screen.getByText('LLM calls')).toBeInTheDocument();
-    expect(screen.queryByText(/^Spans \(\d+\)$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Generations \(\d+\)$/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('select conversation conv-b'));
     expect(await screen.findByText('Conversation ID')).toBeInTheDocument();
-    expect(await screen.findByText(/^Spans \(\d+\)$/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Generations \(\d+\)$/)).toBeInTheDocument();
     expect(screen.getByText('Conversation ID').parentElement).toHaveTextContent('conv-b');
     expect(router.state.location.pathname).toBe('/conversations/conv-b/view');
     expect(screen.queryByLabelText('select conversation conv-b')).not.toBeInTheDocument();
@@ -150,7 +151,7 @@ describe('ConversationsBrowserPage', () => {
 
     await waitFor(() => expect(dataSource.searchConversations).toHaveBeenCalledTimes(2));
     expect((await screen.findByText('Conversation ID')).parentElement).toHaveTextContent('conv-b');
-    expect(await screen.findByText(/^Spans \(\d+\)$/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Generations \(\d+\)$/)).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/conversations/conv-b/view');
     expect(screen.queryByLabelText('select conversation conv-b')).not.toBeInTheDocument();
     expect(dataSource.getConversationDetail).toHaveBeenCalledWith('conv-b');
@@ -170,7 +171,7 @@ describe('ConversationsBrowserPage', () => {
     await waitFor(() => {
       expect(screen.queryByText('Conversation ID')).not.toBeInTheDocument();
     });
-    expect(screen.queryByText(/^Spans \(\d+\)$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Generations \(\d+\)$/)).not.toBeInTheDocument();
   });
 
   it('keeps selected route for deep links outside the current list range', async () => {
