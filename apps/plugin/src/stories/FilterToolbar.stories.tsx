@@ -70,9 +70,9 @@ function WithActiveFiltersWrapper() {
     makeTimeRange('2026-02-15T08:00:00.000Z', '2026-02-15T12:00:00.000Z')
   );
   const [filters, setFilters] = useState<DashboardFilters>({
-    provider: 'openai',
-    model: 'gpt-4o',
-    agentName: 'my-chatbot',
+    providers: ['openai'],
+    models: ['gpt-4o'],
+    agentNames: ['my-chatbot'],
     labelFilters: [{ key: 'service_name', operator: '=~', value: 'sigil.*' }],
   });
 

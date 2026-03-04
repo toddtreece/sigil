@@ -119,16 +119,16 @@ export type LabelFilter = {
 };
 
 export type DashboardFilters = {
-  provider: string;
-  model: string;
-  agentName: string;
+  providers: string[];
+  models: string[];
+  agentNames: string[];
   labelFilters: LabelFilter[];
 };
 
 export const emptyFilters: DashboardFilters = {
-  provider: '',
-  model: '',
-  agentName: '',
+  providers: [],
+  models: [],
+  agentNames: [],
   labelFilters: [],
 };
 

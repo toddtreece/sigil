@@ -35,20 +35,46 @@ function labelPriority(label: string): number {
   return 2;
 }
 
+// Maps Prometheus metric labels to the backend's well-known filter short names
+// which resolve to the correct Tempo span attributes (e.g. provider -> span.gen_ai.provider.name).
+const promLabelToFilterKey: Record<string, string> = {
+  gen_ai_provider_name: 'provider',
+  gen_ai_request_model: 'model',
+  gen_ai_agent_name: 'agent',
+};
+
+function buildFilterClause(key: string, values: string[]): string | null {
+  if (values.length === 0) {
+    return null;
+  }
+  if (values.length === 1) {
+    return `${key} = "${values[0]}"`;
+  }
+  return `${key} =~ "${values.join('|')}"`;
+}
+
 function buildConversationSearchFilter(filters: DashboardFilters): string {
   const parts: string[] = [];
-  if (filters.provider) {
-    parts.push(`span.gen_ai.system = "${filters.provider}"`);
+
+  const providerClause = buildFilterClause('provider', filters.providers);
+  if (providerClause) {
+    parts.push(providerClause);
   }
-  if (filters.model) {
-    parts.push(`span.gen_ai.request.model = "${filters.model}"`);
+
+  const modelClause = buildFilterClause('model', filters.models);
+  if (modelClause) {
+    parts.push(modelClause);
   }
-  if (filters.agentName) {
-    parts.push(`span.gen_ai.agent.name = "${filters.agentName}"`);
+
+  const agentClause = buildFilterClause('agent', filters.agentNames);
+  if (agentClause) {
+    parts.push(agentClause);
   }
+
   for (const lf of filters.labelFilters) {
     if (lf.key && lf.value) {
-      parts.push(`${lf.key} ${lf.operator} "${lf.value}"`);
+      const resolvedKey = promLabelToFilterKey[lf.key] ?? lf.key;
+      parts.push(`${resolvedKey} ${lf.operator} "${lf.value}"`);
     }
   }
   return parts.join(' ');
@@ -268,22 +294,29 @@ export default function ConversationsBrowserPage(props: ConversationsBrowserPage
   const to = useMemo(() => Math.floor(timeRange.to.valueOf() / 1000), [timeRange]);
 
   const providerMatcher = useMemo(() => {
-    if (!filters.provider) {
+    if (filters.providers.length === 0) {
       return undefined;
     }
-    return `{gen_ai_provider_name="${filters.provider}"}`;
-  }, [filters.provider]);
+    if (filters.providers.length === 1) {
+      return `{gen_ai_provider_name="${filters.providers[0]}"}`;
+    }
+    return `{gen_ai_provider_name=~"${filters.providers.join('|')}"}`;
+  }, [filters.providers]);
 
   const providerAndModelMatcher = useMemo(() => {
     const parts: string[] = [];
-    if (filters.provider) {
-      parts.push(`gen_ai_provider_name="${filters.provider}"`);
+    if (filters.providers.length === 1) {
+      parts.push(`gen_ai_provider_name="${filters.providers[0]}"`);
+    } else if (filters.providers.length > 1) {
+      parts.push(`gen_ai_provider_name=~"${filters.providers.join('|')}"`);
     }
-    if (filters.model) {
-      parts.push(`gen_ai_request_model="${filters.model}"`);
+    if (filters.models.length === 1) {
+      parts.push(`gen_ai_request_model="${filters.models[0]}"`);
+    } else if (filters.models.length > 1) {
+      parts.push(`gen_ai_request_model=~"${filters.models.join('|')}"`);
     }
     return parts.length > 0 ? `{${parts.join(',')}}` : undefined;
-  }, [filters.provider, filters.model]);
+  }, [filters.providers, filters.models]);
 
   const providerValues = useLabelValues(dashboardDS, 'gen_ai_provider_name', from, to);
   const modelValues = useLabelValues(dashboardDS, 'gen_ai_request_model', from, to, providerMatcher);

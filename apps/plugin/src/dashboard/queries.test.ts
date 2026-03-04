@@ -25,9 +25,9 @@ import {
 import type { DashboardFilters } from './types';
 
 const empty: DashboardFilters = {
-  provider: '',
-  model: '',
-  agentName: '',
+  providers: [],
+  models: [],
+  agentNames: [],
   labelFilters: [],
 };
 
@@ -37,23 +37,23 @@ describe('buildLabelSelector', () => {
   });
 
   it('builds fuzzy selector for single filter', () => {
-    expect(buildLabelSelector({ ...empty, provider: 'openai' })).toBe('gen_ai_provider_name=~"(?i).*openai.*"');
+    expect(buildLabelSelector({ ...empty, providers: ['openai'] })).toBe('gen_ai_provider_name=~"(?i).*openai.*"');
   });
 
   it('builds fuzzy selector for multiple filters', () => {
-    expect(buildLabelSelector({ ...empty, provider: 'openai', model: 'gpt-4o', agentName: 'my-agent' })).toBe(
+    expect(buildLabelSelector({ ...empty, providers: ['openai'], models: ['gpt-4o'], agentNames: ['my-agent'] })).toBe(
       'gen_ai_provider_name=~"(?i).*openai.*",gen_ai_request_model=~"(?i).*gpt-4o.*",gen_ai_agent_name=~"(?i).*my-agent.*"'
     );
   });
 
   it('escapes regex metacharacters in filter values', () => {
-    expect(buildLabelSelector({ ...empty, provider: 'openai(v2)+' })).toBe(
+    expect(buildLabelSelector({ ...empty, providers: ['openai(v2)+'] })).toBe(
       'gen_ai_provider_name=~"(?i).*openai\\(v2\\)\\+.*"'
     );
   });
 
   it('escapes dots as [.] for RE2 compatibility (Prometheus rejects \\.)', () => {
-    expect(buildLabelSelector({ ...empty, model: 'us.anthropic.claude-haiku-4-5-20251001-v1:0' })).toBe(
+    expect(buildLabelSelector({ ...empty, models: ['us.anthropic.claude-haiku-4-5-20251001-v1:0'] })).toBe(
       'gen_ai_request_model=~"(?i).*us[.]anthropic[.]claude-haiku-4-5-20251001-v1:0.*"'
     );
   });
@@ -136,7 +136,7 @@ describe('computeRangeDuration', () => {
 
 describe('stat query builders', () => {
   const noFilters: DashboardFilters = empty;
-  const withFilters: DashboardFilters = { ...empty, provider: 'openai' };
+  const withFilters: DashboardFilters = { ...empty, providers: ['openai'] };
 
   it('totalOpsQuery without filters', () => {
     expect(totalOpsQuery(noFilters, '3600s')).toBe(

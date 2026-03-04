@@ -46,22 +46,29 @@ export default function DashboardPage({ dataSource = defaultDashboardDataSource 
 
   // Cascading matchers: provider restricts model options, provider+model restricts agent options.
   const providerMatcher = useMemo(() => {
-    if (!filters.provider) {
+    if (filters.providers.length === 0) {
       return undefined;
     }
-    return `{gen_ai_provider_name="${filters.provider}"}`;
-  }, [filters.provider]);
+    if (filters.providers.length === 1) {
+      return `{gen_ai_provider_name="${filters.providers[0]}"}`;
+    }
+    return `{gen_ai_provider_name=~"${filters.providers.join('|')}"}`;
+  }, [filters.providers]);
 
   const providerAndModelMatcher = useMemo(() => {
     const parts: string[] = [];
-    if (filters.provider) {
-      parts.push(`gen_ai_provider_name="${filters.provider}"`);
+    if (filters.providers.length === 1) {
+      parts.push(`gen_ai_provider_name="${filters.providers[0]}"`);
+    } else if (filters.providers.length > 1) {
+      parts.push(`gen_ai_provider_name=~"${filters.providers.join('|')}"`);
     }
-    if (filters.model) {
-      parts.push(`gen_ai_request_model="${filters.model}"`);
+    if (filters.models.length === 1) {
+      parts.push(`gen_ai_request_model="${filters.models[0]}"`);
+    } else if (filters.models.length > 1) {
+      parts.push(`gen_ai_request_model=~"${filters.models.join('|')}"`);
     }
     return parts.length > 0 ? `{${parts.join(',')}}` : undefined;
-  }, [filters.provider, filters.model]);
+  }, [filters.providers, filters.models]);
 
   const providerValues = useLabelValues(dataSource, 'gen_ai_provider_name', from, to);
   const modelValues = useLabelValues(dataSource, 'gen_ai_request_model', from, to, providerMatcher);

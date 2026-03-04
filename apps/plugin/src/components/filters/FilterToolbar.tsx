@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { css } from '@emotion/css';
 import { dateTime, type GrafanaTheme2, type SelectableValue, type TimeRange } from '@grafana/data';
-import { IconButton, Select, Stack, TimeRangePicker, useStyles2 } from '@grafana/ui';
+import { IconButton, MultiSelect, Stack, TimeRangePicker, useStyles2 } from '@grafana/ui';
 import { type DashboardFilters, type LabelFilter } from '../../dashboard/types';
 import type { DashboardDataSource } from '../../dashboard/api';
 import { LabelFilterInput } from './LabelFilterInput';
@@ -66,55 +66,49 @@ export function FilterToolbar({
   );
 
   const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (filters.provider) {
-      count++;
-    }
-    if (filters.model) {
-      count++;
-    }
-    if (filters.agentName) {
-      count++;
-    }
-    count += filters.labelFilters.filter((lf) => lf.key && lf.value).length;
-    return count;
+    return (
+      filters.providers.length +
+      filters.models.length +
+      filters.agentNames.length +
+      filters.labelFilters.filter((lf) => lf.key && lf.value).length
+    );
   }, [filters]);
 
   const handleProviderChange = useCallback(
-    (value: SelectableValue<string>) => {
-      onFiltersChange({ ...filters, provider: value?.value ?? '', model: '', agentName: '' });
+    (values: Array<SelectableValue<string>>) => {
+      onFiltersChange({ ...filters, providers: values.map((v) => v.value!).filter(Boolean) });
     },
     [filters, onFiltersChange]
   );
   const handleProviderCreate = useCallback(
     (value: string) => {
-      onFiltersChange({ ...filters, provider: value.trim(), model: '', agentName: '' });
+      onFiltersChange({ ...filters, providers: [...filters.providers, value.trim()] });
     },
     [filters, onFiltersChange]
   );
 
   const handleModelChange = useCallback(
-    (value: SelectableValue<string>) => {
-      onFiltersChange({ ...filters, model: value?.value ?? '', agentName: '' });
+    (values: Array<SelectableValue<string>>) => {
+      onFiltersChange({ ...filters, models: values.map((v) => v.value!).filter(Boolean) });
     },
     [filters, onFiltersChange]
   );
   const handleModelCreate = useCallback(
     (value: string) => {
-      onFiltersChange({ ...filters, model: value.trim(), agentName: '' });
+      onFiltersChange({ ...filters, models: [...filters.models, value.trim()] });
     },
     [filters, onFiltersChange]
   );
 
   const handleAgentChange = useCallback(
-    (value: SelectableValue<string>) => {
-      onFiltersChange({ ...filters, agentName: value?.value ?? '' });
+    (values: Array<SelectableValue<string>>) => {
+      onFiltersChange({ ...filters, agentNames: values.map((v) => v.value!).filter(Boolean) });
     },
     [filters, onFiltersChange]
   );
   const handleAgentCreate = useCallback(
     (value: string) => {
-      onFiltersChange({ ...filters, agentName: value.trim() });
+      onFiltersChange({ ...filters, agentNames: [...filters.agentNames, value.trim()] });
     },
     [filters, onFiltersChange]
   );
@@ -142,7 +136,7 @@ export function FilterToolbar({
 
   const handleClearFilters = useCallback(() => {
     setPendingRows([]);
-    onFiltersChange({ provider: '', model: '', agentName: '', labelFilters: [] });
+    onFiltersChange({ providers: [], models: [], agentNames: [], labelFilters: [] });
   }, [onFiltersChange]);
 
   const providerSelectOptions = useMemo(() => providerOptions.map((v) => ({ label: v, value: v })), [providerOptions]);
@@ -160,38 +154,38 @@ export function FilterToolbar({
       )}
       <div className={styles.filtersSection}>
         <Stack direction="row" gap={1} alignItems="center" wrap="wrap">
-          <Select<string>
+          <MultiSelect<string>
             options={providerSelectOptions}
-            value={filters.provider || null}
+            value={filters.providers}
             onChange={handleProviderChange}
             onCreateOption={handleProviderCreate}
             placeholder="Provider"
             isClearable
             allowCustomValue
             isSearchable
-            width={20}
+            width={filters.providers.length > 0 ? 'auto' : 24}
           />
-          <Select<string>
+          <MultiSelect<string>
             options={modelSelectOptions}
-            value={filters.model || null}
+            value={filters.models}
             onChange={handleModelChange}
             onCreateOption={handleModelCreate}
             placeholder="Model"
             isClearable
             allowCustomValue
             isSearchable
-            width={20}
+            width={filters.models.length > 0 ? 'auto' : 24}
           />
-          <Select<string>
+          <MultiSelect<string>
             options={agentSelectOptions}
-            value={filters.agentName || null}
+            value={filters.agentNames}
             onChange={handleAgentChange}
             onCreateOption={handleAgentCreate}
             placeholder="Agent"
             isClearable
             allowCustomValue
             isSearchable
-            width={20}
+            width={filters.agentNames.length > 0 ? 'auto' : 24}
           />
           {!hideLabelFilters && (
             <LabelFilterInput

@@ -42,11 +42,15 @@ function parseLabelFilters(params: URLSearchParams): LabelFilter[] {
   return filters;
 }
 
+function parseMulti(params: URLSearchParams, key: string): string[] {
+  return params.getAll(key).filter(Boolean);
+}
+
 function parseFilters(params: URLSearchParams): DashboardFilters {
   return {
-    provider: params.get('provider') || '',
-    model: params.get('model') || '',
-    agentName: params.get('agent') || '',
+    providers: parseMulti(params, 'provider'),
+    models: parseMulti(params, 'model'),
+    agentNames: parseMulti(params, 'agent'),
     labelFilters: parseLabelFilters(params),
   };
 }
@@ -56,6 +60,15 @@ function setOrDelete(params: URLSearchParams, key: string, value: string, defaul
     params.delete(key);
   } else {
     params.set(key, value);
+  }
+}
+
+function setMulti(params: URLSearchParams, key: string, values: string[]): void {
+  params.delete(key);
+  for (const v of values) {
+    if (v) {
+      params.append(key, v);
+    }
   }
 }
 
@@ -94,9 +107,9 @@ export function useFilterUrlState(): FilterUrlState {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          setOrDelete(next, 'provider', f.provider);
-          setOrDelete(next, 'model', f.model);
-          setOrDelete(next, 'agent', f.agentName);
+          setMulti(next, 'provider', f.providers);
+          setMulti(next, 'model', f.models);
+          setMulti(next, 'agent', f.agentNames);
           next.delete('label');
           for (const lf of f.labelFilters) {
             if (lf.key && lf.value) {

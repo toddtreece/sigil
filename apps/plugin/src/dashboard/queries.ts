@@ -38,16 +38,27 @@ function labelMatcher(label: string, operator: FilterOperator, value: string): s
   return fuzzyMatcher(label, trimmed);
 }
 
+function multiMatcher(label: string, values: string[]): string {
+  if (values.length === 0) {
+    return '';
+  }
+  if (values.length === 1) {
+    return fuzzyMatcher(label, values[0]);
+  }
+  const pattern = values.map((v) => escapePrometheusRegex(v.trim())).join('|');
+  return `${label}=~"${pattern}"`;
+}
+
 export function buildLabelSelector(filters: DashboardFilters): string {
   const parts: string[] = [];
-  if (filters.provider) {
-    parts.push(fuzzyMatcher('gen_ai_provider_name', filters.provider));
+  if (filters.providers.length > 0) {
+    parts.push(multiMatcher('gen_ai_provider_name', filters.providers));
   }
-  if (filters.model) {
-    parts.push(fuzzyMatcher('gen_ai_request_model', filters.model));
+  if (filters.models.length > 0) {
+    parts.push(multiMatcher('gen_ai_request_model', filters.models));
   }
-  if (filters.agentName) {
-    parts.push(fuzzyMatcher('gen_ai_agent_name', filters.agentName));
+  if (filters.agentNames.length > 0) {
+    parts.push(multiMatcher('gen_ai_agent_name', filters.agentNames));
   }
   for (const lf of filters.labelFilters) {
     if (lf.key && lf.value) {
