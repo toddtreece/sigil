@@ -8,8 +8,7 @@ import type { ConversationSearchResult } from '../conversation/types';
 import { type DashboardDataSource, defaultDashboardDataSource } from '../dashboard/api';
 import type { DashboardFilters } from '../dashboard/types';
 import { useFilterUrlState } from '../hooks/useFilterUrlState';
-import { useLabelNames } from '../components/dashboard/useLabelNames';
-import { useLabelValues } from '../components/dashboard/useLabelValues';
+import { useCascadingFilterOptions } from '../hooks/useCascadingFilterOptions';
 import { FilterToolbar } from '../components/filters/FilterToolbar';
 import ConversationListPanel from '../components/conversations/ConversationListPanel';
 import { buildConversationViewRoute, ROUTES } from '../constants';
@@ -22,18 +21,6 @@ export type ConversationsBrowserPageProps = {
 const SDK_NAME_SELECT_KEY = 'span.sigil.sdk.name';
 const TOTAL_TOKENS_SELECT_KEY = 'span.gen_ai.usage.total_tokens';
 const DEFAULT_SEARCH_SELECT_FIELDS = [SDK_NAME_SELECT_KEY];
-
-const noiseLabels = new Set(['__name__', 'le', 'quantile']);
-
-function labelPriority(label: string): number {
-  if (label.startsWith('gen_ai_')) {
-    return 0;
-  }
-  if (label.startsWith('telemetry_') || label.includes('service') || label === 'job' || label === 'instance') {
-    return 1;
-  }
-  return 2;
-}
 
 // Maps Prometheus metric labels to the backend's well-known filter short names
 // which resolve to the correct Tempo span attributes (e.g. provider -> span.gen_ai.provider.name).
@@ -293,54 +280,8 @@ export default function ConversationsBrowserPage(props: ConversationsBrowserPage
   const from = useMemo(() => Math.floor(timeRange.from.valueOf() / 1000), [timeRange]);
   const to = useMemo(() => Math.floor(timeRange.to.valueOf() / 1000), [timeRange]);
 
-  const providerMatcher = useMemo(() => {
-    if (filters.providers.length === 0) {
-      return undefined;
-    }
-    if (filters.providers.length === 1) {
-      return `{gen_ai_provider_name="${filters.providers[0]}"}`;
-    }
-    return `{gen_ai_provider_name=~"${filters.providers.join('|')}"}`;
-  }, [filters.providers]);
-
-  const providerAndModelMatcher = useMemo(() => {
-    const parts: string[] = [];
-    if (filters.providers.length === 1) {
-      parts.push(`gen_ai_provider_name="${filters.providers[0]}"`);
-    } else if (filters.providers.length > 1) {
-      parts.push(`gen_ai_provider_name=~"${filters.providers.join('|')}"`);
-    }
-    if (filters.models.length === 1) {
-      parts.push(`gen_ai_request_model="${filters.models[0]}"`);
-    } else if (filters.models.length > 1) {
-      parts.push(`gen_ai_request_model=~"${filters.models.join('|')}"`);
-    }
-    return parts.length > 0 ? `{${parts.join(',')}}` : undefined;
-  }, [filters.providers, filters.models]);
-
-  const providerValues = useLabelValues(dashboardDS, 'gen_ai_provider_name', from, to);
-  const modelValues = useLabelValues(dashboardDS, 'gen_ai_request_model', from, to, providerMatcher);
-  const agentValues = useLabelValues(dashboardDS, 'gen_ai_agent_name', from, to, providerAndModelMatcher);
-
-  const labelNames = useLabelNames(dashboardDS, from, to);
-
-  const labelKeyOptions = useMemo(() => {
-    const merged = new Set<string>([
-      ...labelNames.names,
-      'gen_ai_provider_name',
-      'gen_ai_request_model',
-      'gen_ai_agent_name',
-    ]);
-    return Array.from(merged)
-      .filter((label) => !noiseLabels.has(label))
-      .sort((a, b) => {
-        const byPriority = labelPriority(a) - labelPriority(b);
-        if (byPriority !== 0) {
-          return byPriority;
-        }
-        return a.localeCompare(b);
-      });
-  }, [labelNames.names]);
+  const { providerOptions, modelOptions, agentOptions, labelKeyOptions, labelsLoading } =
+    useCascadingFilterOptions(dashboardDS, filters, from, to);
 
   const conversationsSegment = `/${ROUTES.Conversations}`;
   const conversationsSegmentIndex = location.pathname.indexOf(conversationsSegment);
@@ -424,11 +365,11 @@ export default function ConversationsBrowserPage(props: ConversationsBrowserPage
           <FilterToolbar
             timeRange={timeRange}
             filters={filters}
-            providerOptions={providerValues.values}
-            modelOptions={modelValues.values}
-            agentOptions={agentValues.values}
+            providerOptions={providerOptions}
+            modelOptions={modelOptions}
+            agentOptions={agentOptions}
             labelKeyOptions={labelKeyOptions}
-            labelsLoading={labelNames.loading}
+            labelsLoading={labelsLoading}
             dataSource={dashboardDS}
             from={from}
             to={to}
