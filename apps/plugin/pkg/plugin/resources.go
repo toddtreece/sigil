@@ -110,6 +110,8 @@ func requiredPermissionAction(method string, path string) (string, bool) {
 		return permissionDataRead, true
 	case method == http.MethodGet && path == "/query/model-cards/lookup":
 		return permissionDataRead, true
+	case strings.HasPrefix(path, "/eval/") || path == "/eval:test":
+		return permissionForEvalRoute(method, path)
 	default:
 		return "", false
 	}
@@ -140,6 +142,17 @@ func permissionForConversationRoute(method string, path string) (string, bool) {
 	}
 
 	return "", false
+}
+
+func permissionForEvalRoute(method string, path string) (string, bool) {
+	switch method {
+	case http.MethodGet:
+		return permissionDataRead, true
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return permissionEvalWrite, true
+	default:
+		return "", false
+	}
 }
 
 func (a *App) handleListConversations(w http.ResponseWriter, req *http.Request) {
@@ -530,6 +543,10 @@ func (a *App) handleEvalRulesPreview(w http.ResponseWriter, req *http.Request) {
 	a.handleProxy(w, req, "/api/v1/eval/rules:preview", http.MethodPost)
 }
 
+func (a *App) handleEvalTest(w http.ResponseWriter, req *http.Request) {
+	a.handleProxy(w, req, "/api/v1/eval:test", http.MethodPost)
+}
+
 func (a *App) handleEvalRules(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case http.MethodGet:
@@ -661,17 +678,18 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/query/model-cards", a.withAuthorization(a.handleListModelCards))
 	mux.HandleFunc("/query/model-cards/lookup", a.withAuthorization(a.handleLookupModelCard))
 
-	mux.HandleFunc("/eval/evaluators", a.handleEvalEvaluators)
-	mux.HandleFunc("/eval/evaluators/", a.handleEvalEvaluatorByID)
-	mux.HandleFunc("/eval/predefined/evaluators", a.handleEvalPredefinedEvaluators)
-	mux.HandleFunc("/eval/predefined/evaluators/", a.handleEvalPredefinedFork)
-	mux.HandleFunc("/eval/rules:preview", a.handleEvalRulesPreview)
-	mux.HandleFunc("/eval/rules", a.handleEvalRules)
-	mux.HandleFunc("/eval/rules/", a.handleEvalRuleByID)
-	mux.HandleFunc("/eval/judge/providers", a.handleEvalJudgeProviders)
-	mux.HandleFunc("/eval/judge/models", a.handleEvalJudgeModels)
-	mux.HandleFunc("/eval/templates", a.handleEvalTemplates)
-	mux.HandleFunc("/eval/templates/", a.handleEvalTemplateRoutes)
+	mux.HandleFunc("/eval/evaluators", a.withAuthorization(a.handleEvalEvaluators))
+	mux.HandleFunc("/eval/evaluators/", a.withAuthorization(a.handleEvalEvaluatorByID))
+	mux.HandleFunc("/eval/predefined/evaluators", a.withAuthorization(a.handleEvalPredefinedEvaluators))
+	mux.HandleFunc("/eval/predefined/evaluators/", a.withAuthorization(a.handleEvalPredefinedFork))
+	mux.HandleFunc("/eval/rules:preview", a.withAuthorization(a.handleEvalRulesPreview))
+	mux.HandleFunc("/eval:test", a.withAuthorization(a.handleEvalTest))
+	mux.HandleFunc("/eval/rules", a.withAuthorization(a.handleEvalRules))
+	mux.HandleFunc("/eval/rules/", a.withAuthorization(a.handleEvalRuleByID))
+	mux.HandleFunc("/eval/judge/providers", a.withAuthorization(a.handleEvalJudgeProviders))
+	mux.HandleFunc("/eval/judge/models", a.withAuthorization(a.handleEvalJudgeModels))
+	mux.HandleFunc("/eval/templates", a.withAuthorization(a.handleEvalTemplates))
+	mux.HandleFunc("/eval/templates/", a.withAuthorization(a.handleEvalTemplateRoutes))
 }
 
 type conversationSearchTimeRange struct {
