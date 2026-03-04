@@ -22,10 +22,10 @@ export const PAGE_TITLES = {
   [ROUTES.ConversationsView]: 'Conversation view',
   [ROUTES.ConversationsExplore]: 'Conversation explore',
   [ROUTES.ConversationsOld]: 'Conversations (old)',
-  [ROUTES.ConversationsDetail]: 'Conversation detail',
+  [ROUTES.ConversationsDetail]: 'Conversations',
   [ROUTES.Agents]: 'Agents',
-  [ROUTES.AgentDetailByName]: 'Agent detail',
-  [ROUTES.AgentDetailAnonymous]: 'Agent detail',
+  [ROUTES.AgentDetailByName]: 'Agents',
+  [ROUTES.AgentDetailAnonymous]: 'Agents',
   [ROUTES.Evaluation]: 'Evaluation',
 } as const;
 
