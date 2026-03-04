@@ -11,6 +11,7 @@ import { DashboardErrorsGrid } from '../components/dashboard/DashboardErrorsGrid
 import { DashboardConsumptionGrid } from '../components/dashboard/DashboardConsumptionGrid';
 import { DashboardCacheGrid } from '../components/dashboard/DashboardCacheGrid';
 import { useCascadingFilterOptions } from '../hooks/useCascadingFilterOptions';
+import { LandingTopBar } from '../components/landing/LandingTopBar';
 
 type DashboardPageProps = {
   dataSource?: DashboardDataSource;
@@ -31,11 +32,16 @@ export default function DashboardPage({ dataSource = defaultDashboardDataSource 
   const from = useMemo(() => Math.floor(timeRange.from.valueOf() / 1000), [timeRange]);
   const to = useMemo(() => Math.floor(timeRange.to.valueOf() / 1000), [timeRange]);
 
-  const { providerOptions, modelOptions, agentOptions, labelKeyOptions, labelsLoading } =
-    useCascadingFilterOptions(dataSource, filters, from, to);
+  const { providerOptions, modelOptions, agentOptions, labelKeyOptions, labelsLoading } = useCascadingFilterOptions(
+    dataSource,
+    filters,
+    from,
+    to
+  );
 
   return (
     <div className={styles.container}>
+      <LandingTopBar assistantOrigin="grafana/sigil-plugin/dashboard" />
       <DashboardFilterBar
         timeRange={timeRange}
         filters={filters}
