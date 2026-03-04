@@ -58,30 +58,52 @@ describe('buildLabelSelector', () => {
     );
   });
 
-  it('supports fuzzy matching on arbitrary label key and value', () => {
-    expect(buildLabelSelector({ ...empty, labelFilters: [{ key: 'service_name', value: 'sigil-api' }] })).toBe(
-      'service_name=~"(?i).*sigil-api.*"'
-    );
+  it('supports exact matching on arbitrary label key with = operator', () => {
+    expect(
+      buildLabelSelector({ ...empty, labelFilters: [{ key: 'service_name', operator: '=', value: 'sigil-api' }] })
+    ).toBe('service_name="sigil-api"');
   });
 
-  it('supports multiple label filters', () => {
+  it('supports regex matching with =~ operator', () => {
+    expect(
+      buildLabelSelector({ ...empty, labelFilters: [{ key: 'service_name', operator: '=~', value: 'sigil.*' }] })
+    ).toBe('service_name=~"sigil.*"');
+  });
+
+  it('supports != operator', () => {
+    expect(
+      buildLabelSelector({ ...empty, labelFilters: [{ key: 'env', operator: '!=', value: 'dev' }] })
+    ).toBe('env!="dev"');
+  });
+
+  it('supports multiple label filters with different operators', () => {
     expect(
       buildLabelSelector({
         ...empty,
         labelFilters: [
-          { key: 'service_name', value: 'sigil-api' },
-          { key: 'env', value: 'prod' },
+          { key: 'service_name', operator: '=', value: 'sigil-api' },
+          { key: 'env', operator: '!=', value: 'dev' },
         ],
       })
-    ).toBe('service_name=~"(?i).*sigil-api.*",env=~"(?i).*prod.*"');
+    ).toBe('service_name="sigil-api",env!="dev"');
+  });
+
+  it('falls back to fuzzy match for numeric comparison operators', () => {
+    expect(
+      buildLabelSelector({ ...empty, labelFilters: [{ key: 'service_name', operator: '<', value: 'sigil-api' }] })
+    ).toBe('service_name=~"(?i).*sigil-api.*"');
   });
 
   it('ignores invalid arbitrary label keys', () => {
-    expect(buildLabelSelector({ ...empty, labelFilters: [{ key: 'service.name', value: 'sigil-api' }] })).toBe('');
+    expect(
+      buildLabelSelector({ ...empty, labelFilters: [{ key: 'service.name', operator: '=', value: 'sigil-api' }] })
+    ).toBe('');
   });
 
   it('ignores label key without label value', () => {
-    expect(buildLabelSelector({ ...empty, labelFilters: [{ key: 'service_name', value: '' }] })).toBe('');
+    expect(
+      buildLabelSelector({ ...empty, labelFilters: [{ key: 'service_name', operator: '=', value: '' }] })
+    ).toBe('');
   });
 });
 

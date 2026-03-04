@@ -97,8 +97,24 @@ export type DashboardTab = 'overview' | 'errors' | 'consumption' | 'cache';
 
 // Dashboard filter state
 
+export type FilterOperator = '=' | '!=' | '=~' | '!~' | '<' | '>' | '<=' | '>=';
+
+export const FILTER_OPERATORS: FilterOperator[] = ['=', '!=', '=~', '!~', '<', '>', '<=', '>='];
+
+export const filterOperatorLabel: Record<FilterOperator, string> = {
+  '=': 'Equals',
+  '!=': 'Not equal',
+  '=~': 'Matches regex',
+  '!~': 'Does not match regex',
+  '<': 'Less than',
+  '>': 'Greater than',
+  '<=': 'Less than or equal',
+  '>=': 'Greater than or equal',
+};
+
 export type LabelFilter = {
   key: string;
+  operator: FilterOperator;
   value: string;
 };
 

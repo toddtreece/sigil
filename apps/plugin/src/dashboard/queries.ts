@@ -1,4 +1,4 @@
-import { breakdownToPromLabel, type BreakdownDimension, type DashboardFilters } from './types';
+import { breakdownToPromLabel, type BreakdownDimension, type DashboardFilters, type FilterOperator } from './types';
 
 // OTel metric names converted to Prometheus format (dots → underscores).
 const TOKEN_USAGE = 'gen_ai_client_token_usage';
@@ -23,6 +23,21 @@ function fuzzyMatcher(label: string, value: string): string {
   return `${label}=~"(?i).*${escapePrometheusRegex(trimmed)}.*"`;
 }
 
+const PROM_MATCH_OPERATORS = new Set<FilterOperator>(['=', '!=', '=~', '!~']);
+
+function labelMatcher(label: string, operator: FilterOperator, value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || !PROMETHEUS_LABEL_NAME.test(label)) {
+    return '';
+  }
+  if (PROM_MATCH_OPERATORS.has(operator)) {
+    return `${label}${operator}"${trimmed}"`;
+  }
+  // Numeric comparison operators (<, >, <=, >=) are not native PromQL label
+  // matchers. Fall back to fuzzy regex match so the selector is still valid.
+  return fuzzyMatcher(label, trimmed);
+}
+
 export function buildLabelSelector(filters: DashboardFilters): string {
   const parts: string[] = [];
   if (filters.provider) {
@@ -36,7 +51,7 @@ export function buildLabelSelector(filters: DashboardFilters): string {
   }
   for (const lf of filters.labelFilters) {
     if (lf.key && lf.value) {
-      parts.push(fuzzyMatcher(lf.key.trim(), lf.value));
+      parts.push(labelMatcher(lf.key.trim(), lf.operator, lf.value));
     }
   }
   return parts.filter(Boolean).join(',');

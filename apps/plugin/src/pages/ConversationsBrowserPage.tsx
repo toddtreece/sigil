@@ -1,21 +1,58 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
-import { dateTime, makeTimeRange, type GrafanaTheme2, type TimeRange } from '@grafana/data';
-import { Alert, TimeRangePicker, useStyles2 } from '@grafana/ui';
+import { dateTime, type GrafanaTheme2 } from '@grafana/data';
+import { Alert, useStyles2 } from '@grafana/ui';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { defaultConversationsDataSource, type ConversationsDataSource } from '../conversation/api';
 import type { ConversationSearchResult } from '../conversation/types';
+import { type DashboardDataSource, defaultDashboardDataSource } from '../dashboard/api';
+import type { DashboardFilters } from '../dashboard/types';
+import { useFilterUrlState } from '../hooks/useFilterUrlState';
+import { useLabelNames } from '../components/dashboard/useLabelNames';
+import { useLabelValues } from '../components/dashboard/useLabelValues';
+import { FilterToolbar } from '../components/filters/FilterToolbar';
 import ConversationListPanel from '../components/conversations/ConversationListPanel';
 import { buildConversationViewRoute, ROUTES } from '../constants';
 
 export type ConversationsBrowserPageProps = {
   dataSource?: ConversationsDataSource;
+  dashboardDataSource?: DashboardDataSource;
 };
 
-const DEFAULT_TIME_RANGE_HOURS = 1;
 const SDK_NAME_SELECT_KEY = 'span.sigil.sdk.name';
 const TOTAL_TOKENS_SELECT_KEY = 'span.gen_ai.usage.total_tokens';
 const DEFAULT_SEARCH_SELECT_FIELDS = [SDK_NAME_SELECT_KEY];
+
+const noiseLabels = new Set(['__name__', 'le', 'quantile']);
+
+function labelPriority(label: string): number {
+  if (label.startsWith('gen_ai_')) {
+    return 0;
+  }
+  if (label.startsWith('telemetry_') || label.includes('service') || label === 'job' || label === 'instance') {
+    return 1;
+  }
+  return 2;
+}
+
+function buildConversationSearchFilter(filters: DashboardFilters): string {
+  const parts: string[] = [];
+  if (filters.provider) {
+    parts.push(`span.gen_ai.system = "${filters.provider}"`);
+  }
+  if (filters.model) {
+    parts.push(`span.gen_ai.request.model = "${filters.model}"`);
+  }
+  if (filters.agentName) {
+    parts.push(`span.gen_ai.agent.name = "${filters.agentName}"`);
+  }
+  for (const lf of filters.labelFilters) {
+    if (lf.key && lf.value) {
+      parts.push(`${lf.key} ${lf.operator} "${lf.value}"`);
+    }
+  }
+  return parts.join(' ');
+}
 
 type StatTrendDirection = 'up' | 'down' | 'neutral';
 type ConversationStats = {
@@ -27,11 +64,6 @@ type ConversationStats = {
   badRatedPct: number;
 };
 
-function defaultTimeRange(): TimeRange {
-  const now = dateTime();
-  return makeTimeRange(dateTime(now).subtract(DEFAULT_TIME_RANGE_HOURS, 'hours'), now);
-}
-
 function sortConversations(conversations: ConversationSearchResult[]): ConversationSearchResult[] {
   return [...conversations].sort((a, b) => Date.parse(b.last_generation_at) - Date.parse(a.last_generation_at));
 }
@@ -39,7 +71,8 @@ function sortConversations(conversations: ConversationSearchResult[]): Conversat
 async function fetchRangeConversations(
   dataSource: ConversationsDataSource,
   fromISO: string,
-  toISO: string
+  toISO: string,
+  filterString: string
 ): Promise<ConversationSearchResult[]> {
   let cursor = '';
   let hasMore = true;
@@ -47,7 +80,7 @@ async function fetchRangeConversations(
 
   while (hasMore) {
     const response = await dataSource.searchConversations({
-      filters: '',
+      filters: filterString,
       select: DEFAULT_SEARCH_SELECT_FIELDS,
       time_range: {
         from: fromISO,
@@ -149,8 +182,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   controlsRow: css({
     label: 'conversationsBrowserPage-controlsRow',
-    display: 'flex',
-    justifyContent: 'flex-end',
     margin: theme.spacing(0.5, 0, 0, 0),
     width: '100%',
     padding: theme.spacing(1, 0),
@@ -227,8 +258,56 @@ const getStyles = (theme: GrafanaTheme2) => ({
 export default function ConversationsBrowserPage(props: ConversationsBrowserPageProps) {
   const styles = useStyles2(getStyles);
   const dataSource = props.dataSource ?? defaultConversationsDataSource;
+  const dashboardDS = props.dashboardDataSource ?? defaultDashboardDataSource;
   const location = useLocation();
   const navigate = useNavigate();
+
+  const { timeRange, filters, setTimeRange, setFilters } = useFilterUrlState();
+
+  const from = useMemo(() => Math.floor(timeRange.from.valueOf() / 1000), [timeRange]);
+  const to = useMemo(() => Math.floor(timeRange.to.valueOf() / 1000), [timeRange]);
+
+  const providerMatcher = useMemo(() => {
+    if (!filters.provider) {
+      return undefined;
+    }
+    return `{gen_ai_provider_name="${filters.provider}"}`;
+  }, [filters.provider]);
+
+  const providerAndModelMatcher = useMemo(() => {
+    const parts: string[] = [];
+    if (filters.provider) {
+      parts.push(`gen_ai_provider_name="${filters.provider}"`);
+    }
+    if (filters.model) {
+      parts.push(`gen_ai_request_model="${filters.model}"`);
+    }
+    return parts.length > 0 ? `{${parts.join(',')}}` : undefined;
+  }, [filters.provider, filters.model]);
+
+  const providerValues = useLabelValues(dashboardDS, 'gen_ai_provider_name', from, to);
+  const modelValues = useLabelValues(dashboardDS, 'gen_ai_request_model', from, to, providerMatcher);
+  const agentValues = useLabelValues(dashboardDS, 'gen_ai_agent_name', from, to, providerAndModelMatcher);
+
+  const labelNames = useLabelNames(dashboardDS, from, to);
+
+  const labelKeyOptions = useMemo(() => {
+    const merged = new Set<string>([
+      ...labelNames.names,
+      'gen_ai_provider_name',
+      'gen_ai_request_model',
+      'gen_ai_agent_name',
+    ]);
+    return Array.from(merged)
+      .filter((label) => !noiseLabels.has(label))
+      .sort((a, b) => {
+        const byPriority = labelPriority(a) - labelPriority(b);
+        if (byPriority !== 0) {
+          return byPriority;
+        }
+        return a.localeCompare(b);
+      });
+  }, [labelNames.names]);
 
   const conversationsSegment = `/${ROUTES.Conversations}`;
   const conversationsSegmentIndex = location.pathname.indexOf(conversationsSegment);
@@ -246,8 +325,9 @@ export default function ConversationsBrowserPage(props: ConversationsBrowserPage
   const [previousConversations, setPreviousConversations] = useState<ConversationSearchResult[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [timeRange, setTimeRangeState] = useState<TimeRange>(() => defaultTimeRange());
   const requestVersionRef = useRef<number>(0);
+
+  const filterString = useMemo(() => buildConversationSearchFilter(filters), [filters]);
 
   const loadConversations = useCallback(async (): Promise<void> => {
     requestVersionRef.current += 1;
@@ -261,8 +341,8 @@ export default function ConversationsBrowserPage(props: ConversationsBrowserPage
       const previousFromISO = dateTime(currentFromMs - windowMs).toISOString();
       const previousToISO = dateTime(currentToMs - windowMs).toISOString();
       const [results, previousRangeConversations] = await Promise.all([
-        fetchRangeConversations(dataSource, timeRange.from.toISOString(), timeRange.to.toISOString()),
-        fetchRangeConversations(dataSource, previousFromISO, previousToISO),
+        fetchRangeConversations(dataSource, timeRange.from.toISOString(), timeRange.to.toISOString(), filterString),
+        fetchRangeConversations(dataSource, previousFromISO, previousToISO, filterString),
       ]);
       if (requestVersionRef.current !== requestVersion) {
         return;
@@ -282,7 +362,7 @@ export default function ConversationsBrowserPage(props: ConversationsBrowserPage
       }
       setLoading(false);
     }
-  }, [dataSource, timeRange]);
+  }, [dataSource, timeRange, filterString]);
 
   useEffect(() => {
     void loadConversations();
@@ -297,28 +377,6 @@ export default function ConversationsBrowserPage(props: ConversationsBrowserPage
     [previousConversations, timeRange]
   );
 
-  const onMoveBackward = useCallback(() => {
-    const diff = timeRange.to.valueOf() - timeRange.from.valueOf();
-    setTimeRangeState(
-      makeTimeRange(dateTime(timeRange.from.valueOf() - diff), dateTime(timeRange.to.valueOf() - diff))
-    );
-  }, [timeRange]);
-
-  const onMoveForward = useCallback(() => {
-    const diff = timeRange.to.valueOf() - timeRange.from.valueOf();
-    setTimeRangeState(
-      makeTimeRange(dateTime(timeRange.from.valueOf() + diff), dateTime(timeRange.to.valueOf() + diff))
-    );
-  }, [timeRange]);
-
-  const onZoom = useCallback(() => {
-    const diff = timeRange.to.valueOf() - timeRange.from.valueOf();
-    const half = Math.round(diff / 2);
-    setTimeRangeState(
-      makeTimeRange(dateTime(timeRange.from.valueOf() - half), dateTime(timeRange.to.valueOf() + half))
-    );
-  }, [timeRange]);
-
   const onSelectConversation = useCallback(
     (conversationID: string) => {
       void navigate(buildAppPath(buildConversationViewRoute(conversationID)), { replace: true });
@@ -330,13 +388,20 @@ export default function ConversationsBrowserPage(props: ConversationsBrowserPage
     <div className={styles.pageContainer}>
       <div className={styles.summarySection}>
         <div className={styles.controlsRow}>
-          <TimeRangePicker
-            value={timeRange}
-            onChange={setTimeRangeState}
-            onChangeTimeZone={() => {}}
-            onMoveBackward={onMoveBackward}
-            onMoveForward={onMoveForward}
-            onZoom={onZoom}
+          <FilterToolbar
+            timeRange={timeRange}
+            filters={filters}
+            providerOptions={providerValues.values}
+            modelOptions={modelValues.values}
+            agentOptions={agentValues.values}
+            labelKeyOptions={labelKeyOptions}
+            labelsLoading={labelNames.loading}
+            dataSource={dashboardDS}
+            from={from}
+            to={to}
+            onTimeRangeChange={setTimeRange}
+            onFiltersChange={setFilters}
+            hideLabelFilters
           />
         </div>
         <div className={styles.statsGrid}>
