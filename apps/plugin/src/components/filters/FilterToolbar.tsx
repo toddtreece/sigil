@@ -155,6 +155,7 @@ export function FilterToolbar({
       <div className={styles.filtersSection}>
         <Stack direction="row" gap={1} alignItems="center" wrap="wrap">
           <MultiSelect<string>
+            className={styles.multiSelect}
             options={providerSelectOptions}
             value={filters.providers}
             onChange={handleProviderChange}
@@ -163,9 +164,10 @@ export function FilterToolbar({
             isClearable
             allowCustomValue
             isSearchable
-            width={filters.providers.length > 0 ? 'auto' : 24}
+            width="auto"
           />
           <MultiSelect<string>
+            className={styles.multiSelect}
             options={modelSelectOptions}
             value={filters.models}
             onChange={handleModelChange}
@@ -174,9 +176,10 @@ export function FilterToolbar({
             isClearable
             allowCustomValue
             isSearchable
-            width={filters.models.length > 0 ? 'auto' : 24}
+            width="auto"
           />
           <MultiSelect<string>
+            className={styles.multiSelect}
             options={agentSelectOptions}
             value={filters.agentNames}
             onChange={handleAgentChange}
@@ -185,7 +188,7 @@ export function FilterToolbar({
             isClearable
             allowCustomValue
             isSearchable
-            width={filters.agentNames.length > 0 ? 'auto' : 24}
+            width="auto"
           />
           {!hideLabelFilters && (
             <LabelFilterInput
@@ -260,6 +263,9 @@ function getStyles(theme: GrafanaTheme2) {
       width: 1,
       alignSelf: 'stretch',
       background: theme.colors.border.medium,
+    }),
+    multiSelect: css({
+      minWidth: 192,
     }),
     clearButton: css({
       color: theme.colors.text.secondary,
