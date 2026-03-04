@@ -50,7 +50,7 @@ export function ModelInfoToggle({ pairs, dataSource }: ModelInfoToggleProps) {
 
   const trigger = (
     <button type="button" className={hasPairs ? triggerStyles.trigger : triggerStyles.triggerDisabled}>
-        <span className={triggerStyles.label}>Models</span>
+      <span className={triggerStyles.label}>Models</span>
       <span className={triggerStyles.icon}>
         <Icon name="list-ul" size="lg" />
       </span>
@@ -62,11 +62,7 @@ export function ModelInfoToggle({ pairs, dataSource }: ModelInfoToggleProps) {
   }
 
   return (
-    <Toggletip
-      placement="bottom-start"
-      fitContent
-      content={<ModelInfoContent pairs={pairs} dataSource={dataSource} />}
-    >
+    <Toggletip placement="bottom-start" fitContent content={<ModelInfoContent pairs={pairs} dataSource={dataSource} />}>
       {trigger}
     </Toggletip>
   );
@@ -314,17 +310,13 @@ function ModelCardDetail({ card }: { card: ModelCard }) {
             {pricing.input_cache_read_usd_per_token != null && pricing.input_cache_read_usd_per_token > 0 && (
               <div className={styles.pricingRow}>
                 <span className={styles.pricingLabel}>Cache read</span>
-                <span className={styles.pricingValue}>
-                  {formatPricePer1M(pricing.input_cache_read_usd_per_token)}
-                </span>
+                <span className={styles.pricingValue}>{formatPricePer1M(pricing.input_cache_read_usd_per_token)}</span>
               </div>
             )}
             {pricing.input_cache_write_usd_per_token != null && pricing.input_cache_write_usd_per_token > 0 && (
               <div className={styles.pricingRow}>
                 <span className={styles.pricingLabel}>Cache write</span>
-                <span className={styles.pricingValue}>
-                  {formatPricePer1M(pricing.input_cache_write_usd_per_token)}
-                </span>
+                <span className={styles.pricingValue}>{formatPricePer1M(pricing.input_cache_write_usd_per_token)}</span>
               </div>
             )}
           </div>

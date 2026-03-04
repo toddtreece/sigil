@@ -11,7 +11,7 @@ const PROMETHEUS_LABEL_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * Uses [.] for literal dots because RE2 (used by Prometheus) rejects \. as
  * "unknown escape sequence"; other metacharacters are escaped with backslash.
  */
-function escapePrometheusRegex(value: string): string {
+export function escapePrometheusRegex(value: string): string {
   return value.replace(/[\\^$.*+?()[\]{}|]/g, (c) => (c === '.' ? '[.]' : `\\${c}`));
 }
 
@@ -39,14 +39,35 @@ function labelMatcher(label: string, operator: FilterOperator, value: string): s
 }
 
 function multiMatcher(label: string, values: string[]): string {
-  if (values.length === 0) {
+  const trimmed = values.map((v) => v.trim()).filter(Boolean);
+  if (trimmed.length === 0 || !PROMETHEUS_LABEL_NAME.test(label)) {
     return '';
   }
-  if (values.length === 1) {
-    return fuzzyMatcher(label, values[0]);
+  if (trimmed.length === 1) {
+    return fuzzyMatcher(label, trimmed[0]);
   }
-  const pattern = values.map((v) => escapePrometheusRegex(v.trim())).join('|');
-  return `${label}=~"${pattern}"`;
+  const pattern = trimmed.map((v) => `.*${escapePrometheusRegex(v)}.*`).join('|');
+  return `${label}=~"(?i)${pattern}"`;
+}
+
+/**
+ * Build a `{label="v1",label2=~"v2|v3"}` selector for cascading label-value
+ * lookups (e.g. restricting model options by selected providers).
+ * Values are escaped for safe use in `=~` regex matchers.
+ */
+export function buildCascadingSelector(labelValues: Record<string, string[]>): string | undefined {
+  const parts: string[] = [];
+  for (const [label, values] of Object.entries(labelValues)) {
+    if (values.length === 0) {
+      continue;
+    }
+    if (values.length === 1) {
+      parts.push(`${label}="${values[0]}"`);
+    } else {
+      parts.push(`${label}=~"${values.map(escapePrometheusRegex).join('|')}"`);
+    }
+  }
+  return parts.length > 0 ? `{${parts.join(',')}}` : undefined;
 }
 
 export function buildLabelSelector(filters: DashboardFilters): string {

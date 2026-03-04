@@ -1,4 +1,5 @@
 import {
+  buildCascadingSelector,
   buildLabelSelector,
   computeStep,
   computeRateInterval,
@@ -31,6 +32,46 @@ const empty: DashboardFilters = {
   labelFilters: [],
 };
 
+describe('buildCascadingSelector', () => {
+  it('returns undefined when all label arrays are empty', () => {
+    expect(buildCascadingSelector({ gen_ai_provider_name: [] })).toBeUndefined();
+  });
+
+  it('uses exact match for a single value', () => {
+    expect(buildCascadingSelector({ gen_ai_provider_name: ['openai'] })).toBe('{gen_ai_provider_name="openai"}');
+  });
+
+  it('joins multiple values with =~ and escapes regex metacharacters', () => {
+    expect(buildCascadingSelector({ gen_ai_provider_name: ['us.anthropic', 'openai'] })).toBe(
+      '{gen_ai_provider_name=~"us[.]anthropic|openai"}'
+    );
+  });
+
+  it('combines multiple labels', () => {
+    expect(
+      buildCascadingSelector({
+        gen_ai_provider_name: ['openai'],
+        gen_ai_request_model: ['gpt-4o', 'gpt-4o(mini)'],
+      })
+    ).toBe('{gen_ai_provider_name="openai",gen_ai_request_model=~"gpt-4o|gpt-4o\\(mini\\)"}');
+  });
+
+  it('skips empty arrays in multi-label input', () => {
+    expect(
+      buildCascadingSelector({
+        gen_ai_provider_name: ['openai'],
+        gen_ai_request_model: [],
+      })
+    ).toBe('{gen_ai_provider_name="openai"}');
+  });
+
+  it('escapes pipe characters in values', () => {
+    expect(buildCascadingSelector({ gen_ai_provider_name: ['a|b', 'c'] })).toBe(
+      '{gen_ai_provider_name=~"a\\|b|c"}'
+    );
+  });
+});
+
 describe('buildLabelSelector', () => {
   it('returns empty string for empty filters', () => {
     expect(buildLabelSelector(empty)).toBe('');
@@ -49,6 +90,18 @@ describe('buildLabelSelector', () => {
   it('escapes regex metacharacters in filter values', () => {
     expect(buildLabelSelector({ ...empty, providers: ['openai(v2)+'] })).toBe(
       'gen_ai_provider_name=~"(?i).*openai\\(v2\\)\\+.*"'
+    );
+  });
+
+  it('builds fuzzy selector for multiple values in one dimension', () => {
+    expect(buildLabelSelector({ ...empty, providers: ['openai', 'anthropic'] })).toBe(
+      'gen_ai_provider_name=~"(?i).*openai.*|.*anthropic.*"'
+    );
+  });
+
+  it('builds fuzzy selector for multiple values with special characters', () => {
+    expect(buildLabelSelector({ ...empty, models: ['gpt-4o', 'claude-3.5'] })).toBe(
+      'gen_ai_request_model=~"(?i).*gpt-4o.*|.*claude-3[.]5.*"'
     );
   });
 
@@ -71,9 +124,9 @@ describe('buildLabelSelector', () => {
   });
 
   it('supports != operator', () => {
-    expect(
-      buildLabelSelector({ ...empty, labelFilters: [{ key: 'env', operator: '!=', value: 'dev' }] })
-    ).toBe('env!="dev"');
+    expect(buildLabelSelector({ ...empty, labelFilters: [{ key: 'env', operator: '!=', value: 'dev' }] })).toBe(
+      'env!="dev"'
+    );
   });
 
   it('supports multiple label filters with different operators', () => {
@@ -101,9 +154,9 @@ describe('buildLabelSelector', () => {
   });
 
   it('ignores label key without label value', () => {
-    expect(
-      buildLabelSelector({ ...empty, labelFilters: [{ key: 'service_name', operator: '=', value: '' }] })
-    ).toBe('');
+    expect(buildLabelSelector({ ...empty, labelFilters: [{ key: 'service_name', operator: '=', value: '' }] })).toBe(
+      ''
+    );
   });
 });
 

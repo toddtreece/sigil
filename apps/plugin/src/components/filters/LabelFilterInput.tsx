@@ -2,12 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { css, cx } from '@emotion/css';
 import { type GrafanaTheme2, type SelectableValue } from '@grafana/data';
 import { Icon, IconButton, Select, useStyles2 } from '@grafana/ui';
-import {
-  type FilterOperator,
-  filterOperatorLabel,
-  FILTER_OPERATORS,
-  type LabelFilter,
-} from '../../dashboard/types';
+import { type FilterOperator, filterOperatorLabel, FILTER_OPERATORS, type LabelFilter } from '../../dashboard/types';
 import type { DashboardDataSource } from '../../dashboard/api';
 import { useLabelValues } from '../dashboard/useLabelValues';
 
@@ -135,11 +130,7 @@ function WipInput({
   return (
     <span className={styles.wip}>
       {showKeyPill && (
-        <button
-          type="button"
-          className={cx(styles.segmentPill, styles.keySegment)}
-          onClick={() => setSegment('key')}
-        >
+        <button type="button" className={cx(styles.segmentPill, styles.keySegment)} onClick={() => setSegment('key')}>
           {filter.key}
         </button>
       )}
@@ -239,12 +230,9 @@ export function LabelFilterInput({
   const wipFilter = filters.find((lf) => !lf.key || !lf.value);
   const wipIndex = wipFilter ? filters.indexOf(wipFilter) : filters.length;
 
-  const handleEdit = useCallback(
-    (index: number) => {
-      setEditing({ index, segment: 'key' });
-    },
-    []
-  );
+  const handleEdit = useCallback((index: number) => {
+    setEditing({ index, segment: 'key' });
+  }, []);
 
   const handleDone = useCallback(() => {
     setEditing(null);
@@ -277,15 +265,7 @@ export function LabelFilterInput({
             />
           );
         }
-        return (
-          <CompletedPill
-            key={realIndex}
-            filter={lf}
-            index={realIndex}
-            onEdit={handleEdit}
-            onRemove={onRemove}
-          />
-        );
+        return <CompletedPill key={realIndex} filter={lf} index={realIndex} onEdit={handleEdit} onRemove={onRemove} />;
       })}
       {wipFilter && !editing && (
         <WipInput

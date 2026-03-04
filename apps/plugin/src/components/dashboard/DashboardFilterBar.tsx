@@ -1,11 +1,7 @@
 import React, { useCallback } from 'react';
 import { Select } from '@grafana/ui';
 import { type SelectableValue, type TimeRange } from '@grafana/data';
-import {
-  type BreakdownDimension,
-  breakdownLabel,
-  type DashboardFilters,
-} from '../../dashboard/types';
+import { type BreakdownDimension, breakdownLabel, type DashboardFilters } from '../../dashboard/types';
 import type { DashboardDataSource } from '../../dashboard/api';
 import { FilterToolbar } from '../filters/FilterToolbar';
 

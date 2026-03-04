@@ -21,7 +21,13 @@ const mockDashboardDataSource: DashboardDataSource = {
   async resolveModelCards() {
     return {
       resolved: [],
-      freshness: { catalog_last_refreshed_at: null, stale: false, soft_stale: false, hard_stale: false, source_path: 'memory_live' },
+      freshness: {
+        catalog_last_refreshed_at: null,
+        stale: false,
+        soft_stale: false,
+        hard_stale: false,
+        source_path: 'memory_live',
+      },
     };
   },
 };
