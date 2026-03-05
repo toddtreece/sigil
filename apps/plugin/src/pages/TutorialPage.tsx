@@ -4,7 +4,6 @@ import type { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2 } from '@grafana/ui';
 import { useAssistant } from '@grafana/assistant';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
-import { getGradientColorAtIndex } from '../components/conversations/traceGradient';
 import { TryItNowPanel } from '../components/tutorial/TryItNowPanel';
 import { PLUGIN_BASE, ROUTES } from '../constants';
 
@@ -158,56 +157,53 @@ const TUTORIAL_SLIDES: TutorialSlide[] = [
   {
     slug: 'what-is-sigil',
     title: 'What is Sigil?',
-    subtitle: 'Modern agentic software needs a new modern signal',
+    subtitle: 'Observability purpose-built for LLM applications',
     renderGraphic: (props) => <WhatIsSigilGraphic {...props} />,
     body: (
       <ul>
-        <li>A new telemetry signal.</li>
-        <li>A new database built for scale.</li>
-        <li>Opinionated drilldown UX.</li>
+        <li>Know when your agents break, slow down, or cost too much.</li>
+        <li>Open spec built on OpenTelemetry. No vendor lock-in.</li>
+        <li>Purpose-built storage and UX for generation telemetry.</li>
       </ul>
     ),
   },
   {
     slug: 'about-the-database',
     title: 'New OSS database',
-    subtitle: 'Purpose-built for this signal, at scale.',
+    subtitle: 'Not a trace store. A generation store.',
     renderGraphic: (props) => <DatabaseGraphic {...props} />,
     body: (
       <ul>
-        <li>Schema and APIs are designed around generation events, not retrofitted traces.</li>
-        <li>Efficient query paths for time windows, agent/model filters, and deep drilldown.</li>
-        <li>Built to stay responsive with high-cardinality metadata and large event volumes.</li>
-        <li>One storage model supports both aggregate dashboards and detailed investigations.</li>
+        <li>Schema designed around generation events, not retrofitted spans.</li>
+        <li>Fast queries across time, model, agent, and custom labels.</li>
+        <li>Stays responsive at high cardinality and large volumes.</li>
+        <li>One store powers both dashboards and deep investigations.</li>
       </ul>
     ),
   },
   {
     slug: 'ui-features',
     title: 'Actually useful UX',
-    subtitle: 'The best bits from the current product surface.',
+    subtitle: "See what matters. Drill into what doesn't look right.",
     renderGraphic: (props) => <UiFeaturesGraphic {...props} />,
     body: (
       <ul>
-        <li>Dashboard tabs for overview, performance, errors, and usage analysis.</li>
-        <li>Cascading filters across providers, models, agents, and labels.</li>
-        <li>Conversation Explore view for timeline + structured drilldown context.</li>
-        <li>Agent pages and evaluation workflows for faster tuning loops.</li>
+        <li>Spot regressions, errors, and cost spikes at a glance.</li>
+        <li>Filter by provider, model, agent, or any custom label.</li>
+        <li>Explore conversations as a timeline with full context.</li>
+        <li>Evaluate agent performance and tighten tuning loops.</li>
       </ul>
     ),
   },
   {
     slug: 'about-the-telemetry-signal',
     title: 'A modern signal for modern software',
-    subtitle: 'High-level, generation-first telemetry for LLM applications.',
+    subtitle: 'Generation-first telemetry for LLM applications',
     subtitleBadge: 'Sigil Spec v0.1',
     renderGraphic: (props) => <TelemetrySignalGraphic {...props} />,
     body: (
       <>
-        <p>
-          Sigil captures generation events with rich operational context so you can reason about quality, latency, cost,
-          and failures in one place. This schema follows the Sigil Spec v0.1.
-        </p>
+        <p>Every LLM call becomes a structured event. Quality, latency, cost, and failures in one schema, one place.</p>
         <SignalFieldMosaic groups={SIGNAL_FIELD_GROUPS} />
       </>
     ),
@@ -215,18 +211,25 @@ const TUTORIAL_SLIDES: TutorialSlide[] = [
   {
     slug: 'autoinstrumentation',
     title: 'Autoinstrumentation',
-    subtitle: 'Get instrumented quickly with agentic coding workflows.',
+    subtitle: 'From zero to instrumented in minutes, not days.',
     renderGraphic: (props) => <AutoinstrumentationGraphic {...props} />,
     body: <AutoinstrumentationBody />,
   },
   {
     slug: 'next-steps',
     title: 'Next steps',
-    subtitle: 'Keep momentum with docs, local instrumentation, and assistant support.',
+    subtitle: 'Start instrumenting. The data speaks for itself.',
     renderGraphic: (props) => <NextStepsGraphic {...props} />,
     body: <NextStepsBody />,
   },
 ];
+
+const TUTORIAL_COLORS = ['#5794F2', '#8A7DEE', '#B877D9', '#DA7AAF', '#F28B4E', '#FF9830'];
+
+function getTutorialColor(_total: number, index: number): string {
+  const i = Math.min(Math.max(Math.round(index), 0), TUTORIAL_COLORS.length - 1);
+  return TUTORIAL_COLORS[i];
+}
 
 const TUTORIAL_SLUGS = new Set(TUTORIAL_SLIDES.map((slide) => slide.slug));
 
@@ -300,8 +303,8 @@ export default function TutorialPage() {
 
   const currentIndex = hasRequestedSlug ? TUTORIAL_SLIDES.findIndex((slide) => slide.slug === requestedSlug) : 0;
   const slide = TUTORIAL_SLIDES[currentIndex];
-  const slideAccentColor = getGradientColorAtIndex(TUTORIAL_SLIDES.length, currentIndex, 1);
-  const slideSecondaryColor = getGradientColorAtIndex(TUTORIAL_SLIDES.length, currentIndex + 2, 0.65);
+  const slideAccentColor = getTutorialColor(TUTORIAL_SLIDES.length, currentIndex);
+  const slideSecondaryColor = getTutorialColor(TUTORIAL_SLIDES.length, currentIndex + 2);
   const previousIndex = currentIndex > 0 ? currentIndex - 1 : null;
   const nextIndex = currentIndex < TUTORIAL_SLIDES.length - 1 ? currentIndex + 1 : null;
   const cardStyle = {
@@ -390,10 +393,10 @@ function AutoinstrumentationBody() {
   return (
     <>
       <ul>
-        <li>Agentic coding skills, tools, and prompts to get instrumented quickly.</li>
-        <li>An interactive agent that asks clarifying questions as you go.</li>
-        <li>Works for both improving existing instrumentation and greenfield setup.</li>
-        <li>See instrumentation results immediately in Sigil UX.</li>
+        <li>AI-powered tools that add instrumentation for you.</li>
+        <li>An interactive agent that asks what it needs as it goes.</li>
+        <li>Works for greenfield and existing codebases alike.</li>
+        <li>See results immediately in the Sigil UI.</li>
       </ul>
       <TryItNowPanel />
     </>
@@ -441,8 +444,8 @@ function NextStepsBody() {
   return (
     <>
       <ul>
-        <li>Learn more by reading the docs.</li>
-        <li>Use Cursor to start instrumenting locally.</li>
+        <li>Explore the docs to go deeper.</li>
+        <li>Use Cursor to instrument your own codebase.</li>
         <li>
           <button type="button" className={styles.askAssistantLink} onClick={openAssistant}>
             Ask Assistant about Sigil →
@@ -863,9 +866,22 @@ function getStyles(theme: GrafanaTheme2) {
       lineHeight: theme.typography.h1.lineHeight,
       letterSpacing: '-0.02em',
       fontWeight: theme.typography.fontWeightBold,
-      borderBottom: '4px solid var(--tutorial-accent)',
-      paddingBottom: theme.spacing(1),
+      position: 'relative',
+      paddingBottom: theme.spacing(0.5),
       width: 'fit-content',
+      marginTop: theme.spacing(-1),
+      '&::after': {
+        content: '""',
+        position: 'absolute',
+        left: -0,
+        right: 0,
+        bottom: -12,
+        height: 8,
+        background: 'var(--tutorial-accent)',
+        borderRadius: 2,
+        transform: 'rotate(-1.5deg)',
+        transformOrigin: 'left center',
+      },
       '@media (max-width: 1024px)': {
         gridColumn: '1 / 2',
       },
@@ -875,6 +891,11 @@ function getStyles(theme: GrafanaTheme2) {
       fontSize: theme.typography.h4.fontSize,
       lineHeight: theme.typography.h4.lineHeight,
       color: theme.colors.text.secondary,
+      '&::before': {
+        content: '">"',
+        color: 'var(--tutorial-accent)',
+        marginRight: theme.spacing(1),
+      },
     }),
     subtitleBadge: css({
       margin: 0,
