@@ -1,6 +1,50 @@
+import React from 'react';
+import { act, render, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { defaultAgentsDataSource } from '../../agents/api';
 import type { AgentListItem } from '../../agents/types';
-import { countAgentsSeenInWindows, shouldFetchHeroStats } from './LandingTopBar';
+import { defaultConversationsDataSource } from '../../conversation/api';
+import { defaultEvaluationDataSource } from '../../evaluation/api';
+import {
+  LandingTopBar,
+  buildRequestSpineCacheKey,
+  countAgentsSeenInWindows,
+  shouldFetchHeroStats,
+} from './LandingTopBar';
+
+jest.mock('@grafana/assistant', () => ({
+  useAssistant: () => ({
+    openAssistant: jest.fn(),
+  }),
+}));
+
+jest.mock('../../conversation/api', () => ({
+  defaultConversationsDataSource: {
+    searchConversations: jest.fn(async () => ({
+      conversations: [],
+      has_more: false,
+      next_cursor: '',
+    })),
+  },
+}));
+
+jest.mock('../../agents/api', () => ({
+  defaultAgentsDataSource: {
+    listAgents: jest.fn(async () => ({
+      items: [],
+      next_cursor: '',
+    })),
+  },
+}));
+
+jest.mock('../../evaluation/api', () => ({
+  defaultEvaluationDataSource: {
+    listEvaluators: jest.fn(async () => ({
+      items: [],
+      next_cursor: '',
+    })),
+  },
+}));
 
 const HERO_STATS_STORAGE_KEY = 'grafana-sigil-hero-stats';
 
@@ -48,7 +92,7 @@ describe('shouldFetchHeroStats', () => {
     localStorage.removeItem(HERO_STATS_STORAGE_KEY);
   });
 
-  it('returns false when cache is still fresh', () => {
+  it('returns true when cache is still fresh to revalidate in background', () => {
     const now = new Date('2026-03-04T12:00:00Z').getTime();
     localStorage.setItem(
       HERO_STATS_STORAGE_KEY,
@@ -60,7 +104,7 @@ describe('shouldFetchHeroStats', () => {
       })
     );
 
-    expect(shouldFetchHeroStats(now)).toBe(false);
+    expect(shouldFetchHeroStats(now)).toBe(true);
   });
 
   it('returns true when cache is stale or missing timestamp', () => {
@@ -85,5 +129,67 @@ describe('shouldFetchHeroStats', () => {
       })
     );
     expect(shouldFetchHeroStats(now)).toBe(true);
+  });
+});
+
+describe('buildRequestSpineCacheKey', () => {
+  it('reuses cache key across quick refreshes for same query and duration', () => {
+    const query = 'sum(rate(http_requests_total[5m]))';
+    const fromA = 1_700_000_000;
+    const toA = 1_700_021_600;
+    const fromB = 1_700_000_060;
+    const toB = 1_700_021_660;
+
+    expect(buildRequestSpineCacheKey(query, fromA, toA, 48)).toBe(buildRequestSpineCacheKey(query, fromB, toB, 48));
+  });
+});
+
+describe('LandingTopBar hero stats polling', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.clearAllMocks();
+  });
+
+  it('recomputes the hero stats time window on each poll interval', async () => {
+    jest.setSystemTime(new Date('2026-03-05T12:00:00Z'));
+
+    const searchConversations = jest.spyOn(defaultConversationsDataSource, 'searchConversations');
+    jest.spyOn(defaultAgentsDataSource, 'listAgents');
+    jest.spyOn(defaultEvaluationDataSource, 'listEvaluators');
+
+    await act(async () => {
+      render(
+        <MemoryRouter>
+          <LandingTopBar assistantOrigin="test-origin" />
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => {
+      expect(searchConversations).toHaveBeenCalledTimes(2);
+    });
+
+    const firstCurrentFrom = Date.parse(searchConversations.mock.calls[0][0].time_range.from);
+    const firstCurrentTo = Date.parse(searchConversations.mock.calls[0][0].time_range.to);
+
+    await act(async () => {
+      jest.advanceTimersByTime(70_000);
+    });
+
+    await waitFor(() => {
+      expect(searchConversations).toHaveBeenCalledTimes(4);
+    });
+
+    const secondCurrentFrom = Date.parse(searchConversations.mock.calls[2][0].time_range.from);
+    const secondCurrentTo = Date.parse(searchConversations.mock.calls[2][0].time_range.to);
+
+    expect(secondCurrentFrom).toBeGreaterThan(firstCurrentFrom);
+    expect(secondCurrentTo).toBeGreaterThan(firstCurrentTo);
+    expect(secondCurrentFrom - firstCurrentFrom).toBe(70_000);
+    expect(secondCurrentTo - firstCurrentTo).toBe(70_000);
   });
 });

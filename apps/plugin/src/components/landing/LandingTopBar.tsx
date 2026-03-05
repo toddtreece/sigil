@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { css } from '@emotion/css';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { css, cx } from '@emotion/css';
 import { useAssistant } from '@grafana/assistant';
 import type { GrafanaTheme2 } from '@grafana/data';
 import { Button, Card, HorizontalGroup, IconButton, LinkButton, Stack, Text, Tooltip, useStyles2 } from '@grafana/ui';
@@ -12,42 +12,19 @@ import {
   getInstrumentationPromptFilename,
   type InstrumentationPromptIde,
 } from '../../content/cursorInstrumentationPrompt';
+import type { DashboardDataSource } from '../../dashboard/api';
+import { computeRateInterval, computeStep, requestsOverTimeQuery } from '../../dashboard/queries';
+import {
+  type DashboardFilters,
+  type PrometheusMatrixResult,
+  type PrometheusQueryResponse,
+  emptyFilters,
+} from '../../dashboard/types';
 import { defaultEvaluationDataSource } from '../../evaluation/api';
-import { ClaudeCodeLogo, CopilotLogo, CursorLogo } from './IdeLogos';
+import { useFilterUrlState } from '../../hooks/useFilterUrlState';
+import { ideTabs, buildCursorPromptDeeplink, downloadTextFile, renderIdeActionLogo } from '../../ide/ideUtils';
 
 type IdeKey = InstrumentationPromptIde;
-
-type IdeTab = {
-  key: IdeKey;
-  label: string;
-  logo: React.ReactNode;
-  blurb: string;
-  tips: string[];
-};
-
-const ideTabs: IdeTab[] = [
-  {
-    key: 'cursor',
-    label: 'Cursor',
-    logo: <CursorLogo />,
-    blurb: 'Have Cursor help add Sigil instrumentation to your code.',
-    tips: [],
-  },
-  {
-    key: 'claudecode',
-    label: 'Claude Code',
-    logo: <ClaudeCodeLogo />,
-    blurb: 'Have Claude Code help add Sigil instrumentation to your code.',
-    tips: [],
-  },
-  {
-    key: 'copilot',
-    label: 'Copilot',
-    logo: <CopilotLogo />,
-    blurb: 'Have Copilot help add Sigil instrumentation to your code.',
-    tips: [],
-  },
-];
 
 type HeroStatItem = {
   label: string;
@@ -59,10 +36,13 @@ type HeroStatItem = {
 };
 
 const METRIC_WINDOW_MS = 24 * 60 * 60 * 1000;
+const TOP_BAR_REFRESH_INTERVAL_MS = 70 * 1000; // 1 min 10 sec
 const PAGE_SIZE = 200;
 const MAX_PAGES = 10;
 const HERO_STATS_STORAGE_KEY = 'grafana-sigil-hero-stats';
-const HERO_STATS_CACHE_TTL_MS = 5 * 60 * 1000;
+const HERO_STATS_ANIMATION_MS = 600;
+const REQUEST_SPINE_STORAGE_KEY = 'grafana-sigil-request-spine';
+const REQUEST_SPINE_CACHE_TTL_MS = 15 * 60 * 1000;
 
 type StoredHeroStats = {
   fetched_at?: number;
@@ -74,6 +54,13 @@ type StoredHeroStats = {
 type HeroStatsCache = {
   stats: HeroStatItem[];
   fetchedAt?: number;
+};
+
+type StoredRequestSpine = {
+  fetched_at: number;
+  key: string;
+  heights: number[];
+  values: number[];
 };
 
 function readHeroStatsCache(): HeroStatsCache | null {
@@ -117,6 +104,57 @@ function readHeroStatsCache(): HeroStatsCache | null {
   }
 }
 
+export function buildRequestSpineCacheKey(query: string, from: number, to: number, spineCount: number): string {
+  // Use query + duration so relative ranges (for example "last 6h") can reuse
+  // cached bars across quick refreshes while still revalidating immediately.
+  return JSON.stringify({
+    query,
+    durationSec: Math.max(0, Math.floor(to - from)),
+    spineCount,
+  });
+}
+
+function readRequestSpineFromStorage(key: string): { heights: number[]; values: number[] } | null {
+  try {
+    const raw = localStorage.getItem(REQUEST_SPINE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as StoredRequestSpine;
+    if (
+      parsed?.key !== key ||
+      !Array.isArray(parsed.heights) ||
+      !Array.isArray(parsed.values) ||
+      typeof parsed.fetched_at !== 'number'
+    ) {
+      return null;
+    }
+    if (Date.now() - parsed.fetched_at > REQUEST_SPINE_CACHE_TTL_MS) {
+      return null;
+    }
+    return {
+      heights: parsed.heights.filter((value) => Number.isFinite(value)).map((value) => Number(value)),
+      values: parsed.values.filter((value) => Number.isFinite(value)).map((value) => Number(value)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveRequestSpineToStorage(key: string, heights: number[], values: number[]): void {
+  try {
+    const stored: StoredRequestSpine = {
+      fetched_at: Date.now(),
+      key,
+      heights,
+      values,
+    };
+    localStorage.setItem(REQUEST_SPINE_STORAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // ignore
+  }
+}
+
 function loadHeroStatsFromStorage(): HeroStatItem[] | null {
   const cached = readHeroStatsCache();
   if (!cached) {
@@ -130,7 +168,9 @@ export function shouldFetchHeroStats(now = Date.now()): boolean {
   if (!cached?.fetchedAt) {
     return true;
   }
-  return now - cached.fetchedAt > HERO_STATS_CACHE_TTL_MS;
+  // Always revalidate in the background so cached stats render instantly
+  // while still converging to fresh backend values.
+  return now - cached.fetchedAt >= 0;
 }
 
 function saveHeroStatsToStorage(stats: HeroStatItem[]): void {
@@ -151,6 +191,19 @@ function saveHeroStatsToStorage(stats: HeroStatItem[]): void {
   }
 }
 
+function interpolateHex(a: string, b: string, t: number): string {
+  const ar = parseInt(a.slice(1, 3), 16);
+  const ag = parseInt(a.slice(3, 5), 16);
+  const ab = parseInt(a.slice(5, 7), 16);
+  const br = parseInt(b.slice(1, 3), 16);
+  const bg = parseInt(b.slice(3, 5), 16);
+  const bb = parseInt(b.slice(5, 7), 16);
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${bl.toString(16).padStart(2, '0')}`;
+}
+
 function buildFakeDocUrl(pathname: string): string {
   return new URL(pathname, 'https://docs.example.com').toString();
 }
@@ -164,42 +217,116 @@ function buildAssistantUrl(message: string): string {
   return url.toString();
 }
 
-function buildCursorPromptDeeplink(promptText: string): string {
-  const deeplink = new URL('https://cursor.com/link/prompt');
-  deeplink.searchParams.set('text', promptText);
-  return deeplink.toString();
-}
-
-function downloadTextFile(filename: string, content: string): void {
-  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-  const objectUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = objectUrl;
-  anchor.download = filename;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(objectUrl);
-}
-
-function renderIdeActionLogo(ide: IdeKey): React.ReactNode {
-  if (ide === 'cursor') {
-    return <CursorLogo size={20} withBackground={false} />;
-  }
-  if (ide === 'claudecode') {
-    return <ClaudeCodeLogo size={20} />;
-  }
-  return <CopilotLogo size={20} />;
-}
-
 type LandingTopBarProps = {
   assistantOrigin: string;
+  requestsDataSource?: DashboardDataSource;
+  requestsFilters?: DashboardFilters;
+  requestsFrom?: number;
+  requestsTo?: number;
 };
 
-export function LandingTopBar({ assistantOrigin }: LandingTopBarProps) {
+function extractRequestsSeries(response: PrometheusQueryResponse): number[] {
+  if (response.status !== 'success' || response.data.resultType !== 'matrix') {
+    return [];
+  }
+  const [series] = response.data.result as PrometheusMatrixResult[];
+  if (!series?.values) {
+    return [];
+  }
+  return series.values
+    .map(([, value]) => Number.parseFloat(value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+}
+
+function formatBarTime(fromSec: number, toSec: number, index: number, count: number): string {
+  const range = toSec - fromSec;
+  const tsSec = fromSec + ((index + 0.5) / count) * range;
+  const date = new Date(tsSec * 1000);
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function formatBarDuration(fromSec: number, toSec: number, count: number): string {
+  const durationSec = (toSec - fromSec) / count;
+  if (durationSec >= 86400) {
+    return `${Math.round(durationSec / 86400)}d`;
+  }
+  if (durationSec >= 3600) {
+    return `${Math.round(durationSec / 3600)}h`;
+  }
+  if (durationSec >= 60) {
+    return `${Math.round(durationSec / 60)}m`;
+  }
+  return `${Math.round(durationSec)}s`;
+}
+
+function formatRequestStat(value: number): string {
+  if (!Number.isFinite(value) || value < 0) {
+    return '0 req/s';
+  }
+  if (value >= 100) {
+    return `${Math.round(value).toLocaleString()} req/s`;
+  }
+  if (value >= 1) {
+    return `${value.toFixed(2)} req/s`;
+  }
+  return `${value.toFixed(3)} req/s`;
+}
+
+function bucketValues(values: number[], targetCount: number): number[] {
+  if (values.length === 0 || targetCount <= 0) {
+    return [];
+  }
+  return Array.from({ length: targetCount }, (_, i) => {
+    const start = Math.floor((i * values.length) / targetCount);
+    const end = Math.max(start + 1, Math.floor(((i + 1) * values.length) / targetCount));
+    const slice = values.slice(start, end);
+    const sum = slice.reduce((acc, value) => acc + value, 0);
+    return sum / slice.length;
+  });
+}
+
+function normalizeValuesToHeights(values: number[], targetCount: number): number[] {
+  if (values.length === 0 || targetCount <= 0) {
+    return [];
+  }
+  const bucketed = bucketValues(values, targetCount);
+  const minValue = Math.min(...bucketed);
+  const maxValue = Math.max(...bucketed);
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    return [];
+  }
+  if (Math.abs(maxValue - minValue) < 1e-9) {
+    return bucketed.map(() => 60);
+  }
+  const minHeight = 20;
+  const maxHeight = 100;
+  return bucketed.map((value) => {
+    const t = (value - minValue) / (maxValue - minValue);
+    return minHeight + t * (maxHeight - minHeight);
+  });
+}
+
+export function LandingTopBar({
+  assistantOrigin,
+  requestsDataSource,
+  requestsFilters = emptyFilters,
+  requestsFrom,
+  requestsTo,
+}: LandingTopBarProps) {
   const styles = useStyles2(getStyles);
   const assistant = useAssistant();
   const navigate = useNavigate();
+  const { timeRange } = useFilterUrlState();
+  const dashboardFrom = useMemo(() => Math.floor(timeRange.from.valueOf() / 1000), [timeRange]);
+  const dashboardTo = useMemo(() => Math.floor(timeRange.to.valueOf() / 1000), [timeRange]);
+  const from = requestsDataSource ? (requestsFrom ?? dashboardFrom) : (requestsFrom ?? 0);
+  const to = requestsDataSource ? (requestsTo ?? dashboardTo) : (requestsTo ?? 0);
   const [assistantInput, setAssistantInput] = useState('');
   const [selectedIde, setSelectedIde] = useState<IdeKey>('cursor');
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
@@ -221,6 +348,20 @@ export function LandingTopBar({ assistantOrigin }: LandingTopBarProps) {
       { label: 'Evaluations', route: ROUTES.Evaluation, cta: 'Manage evals', current: 0, previous: 0, loading: true },
     ];
   });
+  const heroStatsRef = useRef(heroStats);
+  const heroStatsAnimationFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    heroStatsRef.current = heroStats;
+  }, [heroStats]);
+
+  useEffect(() => {
+    return () => {
+      if (heroStatsAnimationFrameRef.current != null) {
+        cancelAnimationFrame(heroStatsAnimationFrameRef.current);
+      }
+    };
+  }, []);
 
   const selectedIdeConfig = useMemo(() => ideTabs.find((ide) => ide.key === selectedIde) ?? ideTabs[0], [selectedIde]);
   const selectedPrompt = useMemo(() => getInstrumentationPrompt(selectedIde), [selectedIde]);
@@ -252,18 +393,18 @@ export function LandingTopBar({ assistantOrigin }: LandingTopBarProps) {
 
   useEffect(() => {
     let cancelled = false;
-    const now = Date.now();
-
-    if (!shouldFetchHeroStats(now)) {
-      return;
-    }
-
-    const currentFrom = new Date(now - METRIC_WINDOW_MS);
-    const currentTo = new Date(now);
-    const previousFrom = new Date(now - 2 * METRIC_WINDOW_MS);
-    const previousTo = new Date(now - METRIC_WINDOW_MS);
 
     const loadStats = async () => {
+      const now = Date.now();
+      if (!shouldFetchHeroStats(now)) {
+        return;
+      }
+
+      const currentFrom = new Date(now - METRIC_WINDOW_MS);
+      const currentTo = new Date(now);
+      const previousFrom = new Date(now - 2 * METRIC_WINDOW_MS);
+      const previousTo = new Date(now - METRIC_WINDOW_MS);
+
       try {
         const [conversationCurrent, conversationPrevious, agentCounts, evaluatorCounts] = await Promise.all([
           countConversationsInRange(currentFrom, currentTo),
@@ -302,8 +443,51 @@ export function LandingTopBar({ assistantOrigin }: LandingTopBarProps) {
             loading: false,
           },
         ];
-        setHeroStats(next);
-        saveHeroStatsToStorage(next);
+        if (heroStatsAnimationFrameRef.current != null) {
+          cancelAnimationFrame(heroStatsAnimationFrameRef.current);
+          heroStatsAnimationFrameRef.current = null;
+        }
+
+        const previous = heroStatsRef.current;
+        const canAnimate =
+          previous.length === next.length &&
+          previous.every((item, index) => item.label === next[index].label && !item.loading && !next[index].loading);
+        const hasValueChange = previous.some(
+          (item, index) => item.current !== next[index].current || item.previous !== next[index].previous
+        );
+
+        if (!canAnimate || !hasValueChange) {
+          setHeroStats(next);
+          saveHeroStatsToStorage(next);
+          return;
+        }
+
+        const animationStart = performance.now();
+        const animationFrom = previous.map((item) => ({ ...item }));
+        const animationTo = next.map((item) => ({ ...item }));
+        const animate = (timestamp: number) => {
+          const elapsed = timestamp - animationStart;
+          const progress = Math.min(1, elapsed / HERO_STATS_ANIMATION_MS);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const frame = animationFrom.map((item, index) => ({
+            ...item,
+            current: Math.round(item.current + (animationTo[index].current - item.current) * eased),
+            previous: Math.round(item.previous + (animationTo[index].previous - item.previous) * eased),
+            loading: false,
+          }));
+          setHeroStats(frame);
+
+          if (progress < 1) {
+            heroStatsAnimationFrameRef.current = requestAnimationFrame(animate);
+            return;
+          }
+
+          heroStatsAnimationFrameRef.current = null;
+          setHeroStats(animationTo);
+          saveHeroStatsToStorage(animationTo);
+        };
+
+        heroStatsAnimationFrameRef.current = requestAnimationFrame(animate);
       } catch {
         if (cancelled) {
           return;
@@ -315,16 +499,197 @@ export function LandingTopBar({ assistantOrigin }: LandingTopBarProps) {
 
     void loadStats();
 
+    const intervalId = setInterval(() => {
+      void loadStats();
+    }, TOP_BAR_REFRESH_INTERVAL_MS);
+
     return () => {
       cancelled = true;
+      clearInterval(intervalId);
     };
   }, []);
+
+  const gradientColors = ['#5794F2', '#B877D9', '#FF9830'] as const;
+  const spineCount = 48;
+  const initialRequestSpineCache = useMemo(() => {
+    if (!requestsDataSource || to <= from) {
+      return null;
+    }
+    const step = computeStep(from, to);
+    const interval = computeRateInterval(step);
+    const query = requestsOverTimeQuery(requestsFilters, interval, 'none');
+    const cacheKey = buildRequestSpineCacheKey(query, from, to, spineCount);
+    const cached = readRequestSpineFromStorage(cacheKey);
+    if (!cached || cached.heights.length === 0 || cached.values.length === 0) {
+      return null;
+    }
+    return cached;
+  }, [requestsDataSource, requestsFilters, from, to, spineCount]);
+  const [requestSpineHeights, setRequestSpineHeights] = useState<number[] | null>(
+    () => initialRequestSpineCache?.heights ?? null
+  );
+  const [requestSpineValues, setRequestSpineValues] = useState<number[] | null>(
+    () => initialRequestSpineCache?.values ?? null
+  );
+  const [disableSpineAnimation, setDisableSpineAnimation] = useState<boolean>(() => initialRequestSpineCache != null);
+  const [requestSpineWaveReason, setRequestSpineWaveReason] = useState<null | 'loading' | 'no-data' | 'error'>(() =>
+    requestsDataSource && to > from && initialRequestSpineCache == null ? 'loading' : null
+  );
+
+  useEffect(() => {
+    if (!requestsDataSource || to <= from) {
+      queueMicrotask(() => {
+        setDisableSpineAnimation(false);
+        setRequestSpineHeights(null);
+        setRequestSpineValues(null);
+        setRequestSpineWaveReason(null);
+      });
+      return;
+    }
+    let cancelled = false;
+    const step = computeStep(from, to);
+    const interval = computeRateInterval(step);
+    const query = requestsOverTimeQuery(requestsFilters, interval, 'none');
+    const cacheKey = buildRequestSpineCacheKey(query, from, to, spineCount);
+    const cached = readRequestSpineFromStorage(cacheKey);
+    const hasCached = cached != null && cached.heights.length > 0 && cached.values.length > 0;
+
+    queueMicrotask(() => {
+      if (hasCached) {
+        setDisableSpineAnimation(true);
+        setRequestSpineHeights(cached.heights);
+        setRequestSpineValues(cached.values);
+        setRequestSpineWaveReason(null);
+      } else {
+        setDisableSpineAnimation(false);
+        setRequestSpineWaveReason('loading');
+      }
+    });
+
+    const loadRequestBars = async () => {
+      try {
+        const response = await requestsDataSource.queryRange(query, from, to, step);
+        if (cancelled) {
+          return;
+        }
+        const values = extractRequestsSeries(response);
+        const nextHeights = normalizeValuesToHeights(values, spineCount);
+        const nextValues = bucketValues(values, spineCount);
+        if (nextHeights.length > 0) {
+          setRequestSpineWaveReason(null);
+          saveRequestSpineToStorage(cacheKey, nextHeights, nextValues);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (!cancelled) {
+                setDisableSpineAnimation(false);
+                setRequestSpineHeights(nextHeights);
+                setRequestSpineValues(nextValues);
+              }
+            });
+          });
+        } else {
+          if (hasCached) {
+            return;
+          }
+          setRequestSpineHeights(null);
+          setRequestSpineValues(null);
+          setRequestSpineWaveReason('no-data');
+        }
+      } catch {
+        if (!cancelled) {
+          if (hasCached) {
+            return;
+          }
+          setRequestSpineHeights(null);
+          setRequestSpineValues(null);
+          setRequestSpineWaveReason('error');
+        }
+      }
+    };
+
+    void loadRequestBars();
+
+    const intervalId = setInterval(() => {
+      void loadRequestBars();
+    }, TOP_BAR_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [requestsDataSource, requestsFilters, from, to, spineCount]);
+
+  const waveAt75Heights = useMemo(() => {
+    const MIN_H = 20;
+    const MAX_H = 100;
+    return Array.from({ length: spineCount }, (_, i) => {
+      const t = i / (spineCount - 1);
+      const wave = 0.5 + 0.5 * Math.sin(2 * Math.PI * (t - 0.5));
+      return MIN_H + (MAX_H - MIN_H) * wave;
+    });
+  }, [spineCount]);
+
+  const displayHeights = requestSpineHeights ?? waveAt75Heights;
+  const showRequestSpines = requestsDataSource != null && to > from;
 
   return (
     <>
       <div className={styles.pageFlow}>
         <div className={styles.heroBlock}>
-          <div className={styles.heroCard}>
+          {showRequestSpines ? (
+            <div className={styles.heroSpines} aria-hidden>
+              {displayHeights.map((height, i) => {
+                const t = i / (spineCount - 1);
+                const color =
+                  t <= 0.52
+                    ? interpolateHex(gradientColors[0], gradientColors[1], t / 0.52)
+                    : interpolateHex(gradientColors[1], gradientColors[2], (t - 0.52) / 0.48);
+                const stat =
+                  requestSpineValues != null && i < requestSpineValues.length
+                    ? formatRequestStat(requestSpineValues[i])
+                    : null;
+                const timeStr = stat != null && to > from ? formatBarTime(from, to, i, spineCount) : null;
+                const durationStr = stat != null && to > from ? formatBarDuration(from, to, spineCount) : null;
+                const waveIssueTooltip =
+                  requestSpineHeights == null && requestsDataSource != null && requestSpineWaveReason === 'error'
+                    ? 'Failed to load request data'
+                    : requestSpineHeights == null && requestsDataSource != null && requestSpineWaveReason === 'no-data'
+                      ? 'No data in this time range'
+                      : null;
+                const tooltipContent =
+                  stat != null ? (
+                    <div className={styles.spineTooltipContent}>
+                      <div>{stat}</div>
+                      {timeStr != null && <div className={styles.spineTooltipTime}>{timeStr}</div>}
+                      {durationStr != null && <div className={styles.spineTooltipTime}>({durationStr})</div>}
+                    </div>
+                  ) : waveIssueTooltip != null ? (
+                    waveIssueTooltip
+                  ) : null;
+                const bar = (
+                  <div
+                    className={styles.heroSpine}
+                    style={{
+                      transform: `scaleY(${height / 100})`,
+                      backgroundColor: color,
+                      transition: disableSpineAnimation ? 'none' : undefined,
+                      transitionDelay:
+                        requestSpineHeights != null && !disableSpineAnimation ? `${Math.min(i * 6, 150)}ms` : undefined,
+                    }}
+                  />
+                );
+                const slot = <div className={styles.heroSpineSlot}>{bar}</div>;
+                return (
+                  <Tooltip key={i} content={tooltipContent ?? ''} placement="top">
+                    {slot}
+                  </Tooltip>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={styles.heroSpinesSpacer} aria-hidden />
+          )}
+          <div className={cx(styles.heroCard, showRequestSpines && styles.heroCardWithSpines)}>
             <div className={styles.heroCardContent}>
               <div className={styles.heroHeader}>
                 <div>
@@ -381,11 +746,17 @@ export function LandingTopBar({ assistantOrigin }: LandingTopBarProps) {
 
         <div className={styles.heroSideHeaderBlock}>
           <HorizontalGroup className={styles.heroSideActions}>
-            <LinkButton href={buildFakeDocUrl('/sigil/get-started')} icon="book-open" target="_blank" rel="noreferrer">
-              Read docs
+            <LinkButton href={`${PLUGIN_BASE}/${ROUTES.Tutorial}`} icon="play" variant="primary">
+              Tutorial (NEW)
             </LinkButton>
-            <LinkButton href={buildFakeDocUrl('/sigil/overview')} variant="secondary" target="_blank" rel="noreferrer">
-              Learn more
+            <LinkButton
+              href={buildFakeDocUrl('/sigil/get-started')}
+              icon="book-open"
+              variant="secondary"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Read docs
             </LinkButton>
           </HorizontalGroup>
           <Card className={styles.heroSideCard}>
@@ -653,6 +1024,7 @@ function getStyles(theme: GrafanaTheme2) {
       alignItems: 'stretch',
       gap: theme.spacing(3),
       boxSizing: 'border-box',
+      marginTop: theme.spacing(-2),
       '@media (max-width: 1200px)': {
         gridTemplateColumns: '1fr',
       },
@@ -662,6 +1034,52 @@ function getStyles(theme: GrafanaTheme2) {
       minWidth: 0,
       display: 'flex',
       flexDirection: 'column',
+    }),
+    heroSpines: css({
+      label: 'landingTopBar-heroSpines',
+      display: 'flex',
+      alignItems: 'flex-end',
+      justifyContent: 'stretch',
+      gap: 2,
+      height: 32,
+      paddingTop: 0,
+      paddingLeft: 0,
+      paddingRight: 0,
+      overflow: 'hidden',
+      opacity: 0.75,
+    }),
+    heroSpinesSpacer: css({
+      label: 'landingTopBar-heroSpinesSpacer',
+      height: 32,
+      flexShrink: 0,
+    }),
+    heroSpineSlot: css({
+      label: 'landingTopBar-heroSpineSlot',
+      flex: 1,
+      minWidth: 2,
+      height: '100%',
+      display: 'flex',
+      alignItems: 'flex-end',
+    }),
+    heroSpine: css({
+      label: 'landingTopBar-heroSpine',
+      width: '100%',
+      height: '100%',
+      borderTopLeftRadius: 1,
+      borderTopRightRadius: 1,
+      transformOrigin: 'bottom',
+      transition: 'transform 0.7s cubic-bezier(0.4, 0, 0.2, 1)',
+    }),
+    spineTooltipContent: css({
+      label: 'landingTopBar-spineTooltipContent',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(0.5),
+    }),
+    spineTooltipTime: css({
+      label: 'landingTopBar-spineTooltipTime',
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
     }),
     heroSideHeaderBlock: css({
       label: 'landingTopBar-heroSideHeaderBlock',
@@ -712,10 +1130,13 @@ function getStyles(theme: GrafanaTheme2) {
         left: 0,
         right: 0,
         height: 3,
-        borderTopLeftRadius: theme.shape.radius.default,
-        borderTopRightRadius: theme.shape.radius.default,
         background: 'linear-gradient(90deg, #5794F2 0%, #B877D9 52%, #FF9830 100%)',
       },
+    }),
+    heroCardWithSpines: css({
+      label: 'landingTopBar-heroCardWithSpines',
+      borderTopLeftRadius: 0,
+      borderTopRightRadius: 0,
     }),
     heroCardContent: css({
       label: 'landingTopBar-heroCardContent',
@@ -727,7 +1148,7 @@ function getStyles(theme: GrafanaTheme2) {
     }),
     introducingLabel: css({
       label: 'landingTopBar-introducingLabel',
-      marginTop: theme.spacing(1),
+      marginTop: 0,
       textTransform: 'uppercase',
       letterSpacing: '0.08em',
       fontWeight: theme.typography.fontWeightMedium,
