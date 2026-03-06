@@ -12,8 +12,6 @@ const TutorialPage = React.lazy(() => import('../pages/TutorialPage'));
 const ConversationsBrowserPage = React.lazy(() => import('../pages/ConversationsBrowserPage'));
 const ConversationPage = React.lazy(() => import('../pages/ConversationPage'));
 const ConversationExplorePage = React.lazy(() => import('../pages/ConversationExplorePage'));
-const ConversationDetailPage = React.lazy(() => import('../pages/ConversationDetailPage'));
-const ConversationsPage = React.lazy(() => import('../pages/ConversationsPage'));
 const AgentsPage = React.lazy(() => import('../pages/AgentsPage'));
 const AgentDetailPage = React.lazy(() => import('../pages/AgentDetailPage'));
 const EvaluationPage = React.lazy(() => import('../pages/EvaluationPage'));
@@ -67,9 +65,7 @@ export default function App(props: AppRootProps) {
       hideFromBreadcrumbs: true,
     };
   }, [props.meta.name, agentDetailPageNav]);
-  const shouldHidePluginHeader =
-    location.pathname.includes(`/${ROUTES.Conversations}`) &&
-    !location.pathname.includes(`/${ROUTES.ConversationsOld}`);
+  const shouldHidePluginHeader = location.pathname.includes(`/${ROUTES.Conversations}`);
 
   React.useEffect(() => {
     const pageInner = document.querySelector('[class*="page-inner"]');
@@ -116,8 +112,6 @@ export default function App(props: AppRootProps) {
             </div>
           }
         />
-        <Route path={ROUTES.ConversationsDetail} element={<ConversationDetailPage />} />
-        <Route path={ROUTES.ConversationsOld} element={<ConversationsPage />} />
         <Route path={ROUTES.Agents} element={<AgentsPage />} />
         <Route path={ROUTES.AgentDetailByName} element={<AgentDetailPage />} />
         <Route path={ROUTES.AgentDetailAnonymous} element={<AgentDetailPage />} />
