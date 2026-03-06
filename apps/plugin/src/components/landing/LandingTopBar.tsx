@@ -752,303 +752,317 @@ export function LandingTopBar({
 
   return (
     <>
-      <div className={styles.pageFlow}>
-        <div className={styles.heroBlock}>
-          {showRequestSpines ? (
-            <div className={styles.heroSpines} aria-hidden>
-              {displayHeights.map((height, i) => {
-                const t = i / (spineCount - 1);
-                const color =
-                  t <= 0.52
-                    ? interpolateHex(gradientColors[0], gradientColors[1], t / 0.52)
-                    : interpolateHex(gradientColors[1], gradientColors[2], (t - 0.52) / 0.48);
-                const stat =
-                  requestSpineValues != null && i < requestSpineValues.length
-                    ? formatRequestStat(requestSpineValues[i])
-                    : null;
-                const timeStr = stat != null && to > from ? formatBarTime(from, to, i, spineCount) : null;
-                const durationStr = stat != null && to > from ? formatBarDuration(from, to, spineCount) : null;
-                const waveIssueTooltip =
-                  requestSpineHeights == null && requestsDataSource != null && requestSpineWaveReason === 'error'
-                    ? 'Failed to load request data'
-                    : requestSpineHeights == null && requestsDataSource != null && requestSpineWaveReason === 'no-data'
-                      ? 'No data in this time range'
+      <div className={styles.responsiveContainer}>
+        <div className={styles.pageFlow}>
+          <div className={styles.heroBlock}>
+            {showRequestSpines ? (
+              <div className={styles.heroSpines} aria-hidden>
+                {displayHeights.map((height, i) => {
+                  const t = i / (spineCount - 1);
+                  const color =
+                    t <= 0.52
+                      ? interpolateHex(gradientColors[0], gradientColors[1], t / 0.52)
+                      : interpolateHex(gradientColors[1], gradientColors[2], (t - 0.52) / 0.48);
+                  const stat =
+                    requestSpineValues != null && i < requestSpineValues.length
+                      ? formatRequestStat(requestSpineValues[i])
                       : null;
-                const tooltipContent =
-                  stat != null ? (
-                    <div className={styles.spineTooltipContent}>
-                      <div>{stat}</div>
-                      {timeStr != null && <div className={styles.spineTooltipTime}>{timeStr}</div>}
-                      {durationStr != null && <div className={styles.spineTooltipTime}>({durationStr})</div>}
-                    </div>
-                  ) : waveIssueTooltip != null ? (
-                    waveIssueTooltip
-                  ) : null;
-                const bar = (
-                  <div
-                    className={styles.heroSpine}
-                    style={{
-                      transform: `scaleY(${height / 100})`,
-                      backgroundColor: color,
-                      transition: disableSpineAnimation ? 'none' : undefined,
-                      transitionDelay:
-                        requestSpineHeights != null && !disableSpineAnimation ? `${Math.min(i * 6, 150)}ms` : undefined,
-                    }}
-                  />
-                );
-                const slot = <div className={styles.heroSpineSlot}>{bar}</div>;
-                return (
-                  <Tooltip key={i} content={tooltipContent ?? ''} placement="top">
-                    {slot}
-                  </Tooltip>
-                );
-              })}
-            </div>
-          ) : (
-            <div className={styles.heroSpinesSpacer} aria-hidden />
-          )}
-          <div className={cx(styles.heroCard, showRequestSpines && styles.heroCardWithSpines)}>
-            <div className={styles.heroCardContent}>
-              <div>
-                <div className={styles.introducingLabel}>Introducing</div>
-                <h1 className={styles.productHeading}>Grafana Sigil</h1>
-                <div className={styles.heroSubRow}>
-                  <Text color="secondary">Actually useful AI O11y &middot; Open source</Text>
+                  const timeStr = stat != null && to > from ? formatBarTime(from, to, i, spineCount) : null;
+                  const durationStr = stat != null && to > from ? formatBarDuration(from, to, spineCount) : null;
+                  const waveIssueTooltip =
+                    requestSpineHeights == null && requestsDataSource != null && requestSpineWaveReason === 'error'
+                      ? 'Failed to load request data'
+                      : requestSpineHeights == null &&
+                          requestsDataSource != null &&
+                          requestSpineWaveReason === 'no-data'
+                        ? 'No data in this time range'
+                        : null;
+                  const tooltipContent =
+                    stat != null ? (
+                      <div className={styles.spineTooltipContent}>
+                        <div>{stat}</div>
+                        {timeStr != null && <div className={styles.spineTooltipTime}>{timeStr}</div>}
+                        {durationStr != null && <div className={styles.spineTooltipTime}>({durationStr})</div>}
+                      </div>
+                    ) : waveIssueTooltip != null ? (
+                      waveIssueTooltip
+                    ) : null;
+                  const bar = (
+                    <div
+                      className={styles.heroSpine}
+                      style={{
+                        transform: `scaleY(${height / 100})`,
+                        backgroundColor: color,
+                        transition: disableSpineAnimation ? 'none' : undefined,
+                        transitionDelay:
+                          requestSpineHeights != null && !disableSpineAnimation
+                            ? `${Math.min(i * 6, 150)}ms`
+                            : undefined,
+                      }}
+                    />
+                  );
+                  const slot = <div className={styles.heroSpineSlot}>{bar}</div>;
+                  return (
+                    <Tooltip key={i} content={tooltipContent ?? ''} placement="top">
+                      {slot}
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className={styles.heroSpinesSpacer} aria-hidden />
+            )}
+            <div className={cx(styles.heroCard, showRequestSpines && styles.heroCardWithSpines)}>
+              <div className={styles.heroCardContent}>
+                <div className={styles.githubButtonWrap}>
                   <LinkButton
+                    className={styles.githubButton}
                     href="https://github.com/grafana/sigil"
                     icon="github"
                     variant="secondary"
+                    fill="text"
                     size="sm"
                     target="_blank"
                     rel="noreferrer"
                   >
-                    GitHub
+                    <span className={styles.githubLabel}>grafana/sigil</span>
                   </LinkButton>
                 </div>
-              </div>
-              <div className={styles.heroPipeline}>
-                <div className={styles.pipelineStep}>
-                  <div
-                    className={styles.pipelineStepAccent}
-                    style={{ background: 'linear-gradient(90deg, #5794F2 0%, #73B9FF 100%)' }}
-                  />
-                  <div className={styles.pipelineStepInner}>
-                    <div className={styles.pipelineStepHeader}>
-                      <div
-                        className={styles.pipelineStepIcon}
-                        style={{ color: '#5794F2', background: 'rgba(87, 148, 242, 0.12)' }}
-                      >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="16 18 22 12 16 6" />
-                          <polyline points="8 6 2 12 8 18" />
-                        </svg>
-                      </div>
-                      <div className={styles.pipelineStepTitle}>Instrument</div>
-                    </div>
-                    <Text variant="h5">Zero-config automatic tracing</Text>
-                    <Text color="secondary" variant="body">
-                      Drop-in SDKs for Go, Python, TypeScript, Java and .NET. Capture every LLM call, token count, and
-                      latency out of the box.
-                    </Text>
+                <div className={styles.heroHeader}>
+                  <div className={styles.heroHeaderTitle}>
+                    <div className={styles.introducingLabel}>Introducing</div>
+                    <h1 className={styles.productHeading}>Grafana Sigil</h1>
                   </div>
                 </div>
-                <div className={styles.pipelineConnector} aria-hidden>
-                  <div className={styles.pipelineConnectorTrack} />
-                  <div
-                    className={styles.pipelineConnectorDot}
-                    style={{ background: '#5794F2', boxShadow: '0 0 8px 2px rgba(87,148,242,0.4)' }}
-                  />
-                </div>
-                <div className={styles.pipelineStep}>
-                  <div
-                    className={styles.pipelineStepAccent}
-                    style={{ background: 'linear-gradient(90deg, #B877D9 0%, #D4A5F5 100%)' }}
-                  />
-                  <div className={styles.pipelineStepInner}>
-                    <div className={styles.pipelineStepHeader}>
-                      <div
-                        className={styles.pipelineStepIcon}
-                        style={{ color: '#B877D9', background: 'rgba(184, 119, 217, 0.12)' }}
-                      >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      </div>
-                      <div className={styles.pipelineStepTitle}>Observe</div>
-                    </div>
-                    <Text variant="h5">Full-stack AI observability</Text>
-                    <Text color="secondary" variant="body">
-                      Monitor latency, tokens, cost, and errors across all providers and models. Track conversations,
-                      agents, and generations in real time.
-                    </Text>
+                <div>
+                  <div className={styles.heroSubRow}>
+                    <Text color="secondary">Actually useful AI O11y</Text>
                   </div>
                 </div>
-                <div className={styles.pipelineConnector} aria-hidden>
-                  <div className={styles.pipelineConnectorTrack} />
-                  <div
-                    className={cx(styles.pipelineConnectorDot, styles.pipelineConnectorDotDelayed)}
-                    style={{ background: '#B877D9', boxShadow: '0 0 8px 2px rgba(184,119,217,0.4)' }}
-                  />
-                </div>
-                <div className={styles.pipelineStep}>
-                  <div
-                    className={styles.pipelineStepAccent}
-                    style={{ background: 'linear-gradient(90deg, #FF9830 0%, #FFB870 100%)' }}
-                  />
-                  <div className={styles.pipelineStepInner}>
-                    <div className={styles.pipelineStepHeader}>
-                      <div
-                        className={styles.pipelineStepIcon}
-                        style={{ color: '#FF9830', background: 'rgba(255, 152, 48, 0.12)' }}
-                      >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                <div className={styles.heroPipeline}>
+                  <div className={styles.pipelineStep}>
+                    <div
+                      className={styles.pipelineStepAccent}
+                      style={{ background: 'linear-gradient(90deg, #5794F2 0%, #73B9FF 100%)' }}
+                    />
+                    <div className={styles.pipelineStepInner}>
+                      <div className={styles.pipelineStepHeader}>
+                        <div
+                          className={styles.pipelineStepIcon}
+                          style={{ color: '#5794F2', background: 'rgba(87, 148, 242, 0.12)' }}
                         >
-                          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                          <polyline points="22 4 12 14.01 9 11.01" />
-                        </svg>
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="16 18 22 12 16 6" />
+                            <polyline points="8 6 2 12 8 18" />
+                          </svg>
+                        </div>
+                        <div className={styles.pipelineStepTitle}>Instrument</div>
                       </div>
-                      <div className={styles.pipelineStepTitle}>Evaluate</div>
+                      <Text variant="h5">Zero-config tracing</Text>
+                      <Text color="secondary" variant="body">
+                        Drop-in SDKs for Go, Python, TypeScript, Java, and .NET. Capture every LLM call, token, and
+                        latency.
+                      </Text>
                     </div>
-                    <Text variant="h5">Automated quality scoring</Text>
-                    <Text color="secondary" variant="body">
-                      LLM judges, regex, JSON schema, or custom heuristics. Surface quality signals and act on them with
-                      dashboards and alerts.
-                    </Text>
+                  </div>
+                  <div className={styles.pipelineConnector} aria-hidden>
+                    <div className={styles.pipelineConnectorTrack} />
+                    <div
+                      className={styles.pipelineConnectorDot}
+                      style={{ background: '#5794F2', boxShadow: '0 0 8px 2px rgba(87,148,242,0.4)' }}
+                    />
+                  </div>
+                  <div className={styles.pipelineStep}>
+                    <div
+                      className={styles.pipelineStepAccent}
+                      style={{ background: 'linear-gradient(90deg, #B877D9 0%, #D4A5F5 100%)' }}
+                    />
+                    <div className={styles.pipelineStepInner}>
+                      <div className={styles.pipelineStepHeader}>
+                        <div
+                          className={styles.pipelineStepIcon}
+                          style={{ color: '#B877D9', background: 'rgba(184, 119, 217, 0.12)' }}
+                        >
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        </div>
+                        <div className={styles.pipelineStepTitle}>Observe</div>
+                      </div>
+                      <Text variant="h5">AI observability</Text>
+                      <Text color="secondary" variant="body">
+                        Track latency, tokens, cost, and errors across providers and models. Follow conversations,
+                        agents, and generations in real time.
+                      </Text>
+                    </div>
+                  </div>
+                  <div className={styles.pipelineConnector} aria-hidden>
+                    <div className={styles.pipelineConnectorTrack} />
+                    <div
+                      className={cx(styles.pipelineConnectorDot, styles.pipelineConnectorDotDelayed)}
+                      style={{ background: '#B877D9', boxShadow: '0 0 8px 2px rgba(184,119,217,0.4)' }}
+                    />
+                  </div>
+                  <div className={styles.pipelineStep}>
+                    <div
+                      className={styles.pipelineStepAccent}
+                      style={{ background: 'linear-gradient(90deg, #FF9830 0%, #FFB870 100%)' }}
+                    />
+                    <div className={styles.pipelineStepInner}>
+                      <div className={styles.pipelineStepHeader}>
+                        <div
+                          className={styles.pipelineStepIcon}
+                          style={{ color: '#FF9830', background: 'rgba(255, 152, 48, 0.12)' }}
+                        >
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                            <polyline points="22 4 12 14.01 9 11.01" />
+                          </svg>
+                        </div>
+                        <div className={styles.pipelineStepTitle}>Evaluate</div>
+                      </div>
+                      <Text variant="h5">Automatic quality scoring</Text>
+                      <Text color="secondary" variant="body">
+                        Use LLM judges, regex, JSON schema, or custom heuristics. Turn quality signals into dashboards
+                        and alerts.
+                      </Text>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <form
-                className={styles.assistantRowDash}
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (assistantInput.trim().length === 0) {
-                    return;
-                  }
-                  openAssistant();
-                }}
-              >
-                <textarea
-                  value={assistantInput}
-                  onChange={(event) => setAssistantInput(event.currentTarget.value)}
-                  onKeyDown={handleAssistantInputKeyDown}
-                  placeholder={typewriterPlaceholder}
-                  className={styles.assistantInput}
-                  rows={1}
-                />
-                <IconButton
-                  name="enter"
-                  variant="secondary"
-                  size="lg"
-                  aria-label="Send"
-                  tooltip="Send"
-                  className={styles.askSubmitButton}
-                  disabled={assistantInput.trim().length === 0}
-                  type="button"
-                  onClick={openAssistant}
-                />
-              </form>
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.heroSideHeaderBlock}>
-          <div className={styles.videoCard}>
-            <div className={styles.videoPreview}>
-              <div className={styles.videoPlayIcon} data-play-icon="">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
-              <div className={styles.videoComingSoon}>
-                <Text color="secondary" variant="bodySmall">
-                  Video coming soon
-                </Text>
-              </div>
-            </div>
-          </div>
-          <div className={styles.sideActions}>
-            <LinkButton
-              href={`${PLUGIN_BASE}/${ROUTES.Tutorial}`}
-              icon="play"
-              variant="primary"
-              fill="outline"
-              className={styles.sideActionButton}
-            >
-              Start tutorial
-            </LinkButton>
-            <LinkButton
-              href="https://github.com/grafana/sigil#readme"
-              icon="book-open"
-              variant="secondary"
-              target="_blank"
-              rel="noreferrer"
-              className={styles.sideActionButton}
-            >
-              Read docs
-            </LinkButton>
-          </div>
-          <Card className={styles.heroSideCard}>
-            <Stack direction="column" gap={2}>
-              <div className={styles.sideCardMutedHeading}>
-                <Text color="secondary">AUTOINSTRUMENTATION</Text>
-                <Tooltip
-                  content="We provide skills and prompts that guide AI to do the instrumentation work for you."
-                  placement="top"
+                <form
+                  className={styles.assistantRowDash}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (assistantInput.trim().length === 0) {
+                      return;
+                    }
+                    openAssistant();
+                  }}
                 >
-                  <span className={styles.sideCardInfoIcon} aria-label="Autoinstrumentation help">
-                    <Icon name="info-circle" size="sm" />
-                  </span>
-                </Tooltip>
-              </div>
-              <Text color="secondary">
-                Use our coding agent skill to instrument your codebase. Then select coding agent.
-              </Text>
-              <div className={styles.ideTabs}>
-                {ideTabs.map((ide) => (
-                  <button
-                    key={ide.key}
+                  <textarea
+                    value={assistantInput}
+                    onChange={(event) => setAssistantInput(event.currentTarget.value)}
+                    onKeyDown={handleAssistantInputKeyDown}
+                    placeholder={typewriterPlaceholder}
+                    className={styles.assistantInput}
+                    rows={1}
+                  />
+                  <IconButton
+                    name="enter"
+                    variant="secondary"
+                    size="lg"
+                    aria-label="Send"
+                    tooltip="Send"
+                    className={styles.askSubmitButton}
+                    disabled={assistantInput.trim().length === 0}
                     type="button"
-                    className={styles.ideTabButton}
-                    onClick={() => {
-                      setSelectedIde(ide.key);
-                      setIsAgentModalOpen(true);
-                    }}
-                    aria-label={`Open ${ide.label} instrumentation details`}
-                  >
-                    <span className={styles.ideTabLogo}>{ide.logo}</span>
-                    <span>{ide.label}</span>
-                  </button>
-                ))}
+                    onClick={openAssistant}
+                  />
+                </form>
               </div>
-            </Stack>
-          </Card>
+            </div>
+          </div>
+
+          <div className={styles.heroSideHeaderBlock}>
+            <div className={styles.videoCard}>
+              <div className={styles.videoPreview}>
+                <div className={styles.videoPlayIcon} data-play-icon="">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+                <div className={styles.videoComingSoon}>
+                  <Text color="secondary" variant="bodySmall">
+                    Video coming soon
+                  </Text>
+                </div>
+              </div>
+            </div>
+            <div className={styles.sideActions}>
+              <LinkButton
+                href={`${PLUGIN_BASE}/${ROUTES.Tutorial}`}
+                icon="play"
+                variant="primary"
+                fill="outline"
+                className={styles.sideActionButton}
+              >
+                Start tutorial
+              </LinkButton>
+              <LinkButton
+                href="https://github.com/grafana/sigil#readme"
+                icon="book-open"
+                variant="secondary"
+                target="_blank"
+                rel="noreferrer"
+                className={styles.sideActionButton}
+              >
+                Read docs
+              </LinkButton>
+            </div>
+            <Card className={styles.heroSideCard}>
+              <Stack direction="column" gap={2}>
+                <div className={styles.sideCardMutedHeading}>
+                  <Text color="secondary">AUTOINSTRUMENTATION</Text>
+                  <Tooltip
+                    content="We provide skills and prompts that guide AI to do the instrumentation work for you."
+                    placement="top"
+                  >
+                    <span className={styles.sideCardInfoIcon} aria-label="Autoinstrumentation help">
+                      <Icon name="info-circle" size="sm" />
+                    </span>
+                  </Tooltip>
+                </div>
+                <Text color="secondary">
+                  Use our coding agent skill to instrument your codebase. Then select coding agent.
+                </Text>
+                <div className={styles.ideTabs}>
+                  {ideTabs.map((ide) => (
+                    <button
+                      key={ide.key}
+                      type="button"
+                      className={styles.ideTabButton}
+                      onClick={() => {
+                        setSelectedIde(ide.key);
+                        setIsAgentModalOpen(true);
+                      }}
+                      aria-label={`Open ${ide.label} instrumentation details`}
+                    >
+                      <span className={styles.ideTabLogo}>{ide.logo}</span>
+                      <span>{ide.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </Stack>
+            </Card>
+          </div>
         </div>
       </div>
 
@@ -1316,9 +1330,16 @@ function getStyles(theme: GrafanaTheme2) {
       gap: theme.spacing(2),
       boxSizing: 'border-box',
       marginTop: theme.spacing(-2),
-      '@media (max-width: 1200px)': {
+      '@container landing-top-bar (max-width: 1200px)': {
         gridTemplateColumns: '1fr',
       },
+    }),
+    responsiveContainer: css({
+      label: 'landingTopBar-responsiveContainer',
+      containerType: 'inline-size',
+      containerName: 'landing-top-bar',
+      width: '100%',
+      minWidth: 0,
     }),
     heroBlock: css({
       label: 'landingTopBar-heroBlock',
@@ -1505,6 +1526,15 @@ function getStyles(theme: GrafanaTheme2) {
       flexDirection: 'column',
       gap: theme.spacing(2),
     }),
+    heroHeader: css({
+      label: 'landingTopBar-heroHeader',
+      position: 'relative',
+      paddingRight: theme.spacing(16),
+    }),
+    heroHeaderTitle: css({
+      label: 'landingTopBar-heroHeaderTitle',
+      minWidth: 0,
+    }),
     introducingLabel: css({
       label: 'landingTopBar-introducingLabel',
       display: 'inline-block',
@@ -1515,17 +1545,35 @@ function getStyles(theme: GrafanaTheme2) {
       fontSize: 11,
       lineHeight: 1,
       color: '#5794F2',
-      background: 'rgba(87, 148, 242, 0.1)',
-      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-      borderRadius: theme.shape.radius.pill,
-      border: '1px solid rgba(87, 148, 242, 0.2)',
+      padding: 0,
     }),
     heroSubRow: css({
       label: 'landingTopBar-heroSubRow',
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(2),
-      marginTop: theme.spacing(0.5),
+      marginTop: '-2px',
+    }),
+    githubButtonWrap: css({
+      label: 'landingTopBar-githubButtonWrap',
+      position: 'absolute',
+      marginTop: theme.spacing(1.5),
+      right: theme.spacing(2),
+      zIndex: 1,
+    }),
+    githubButton: css({
+      label: 'landingTopBar-githubButton',
+      minWidth: 'auto',
+      '& svg': {
+        width: 22,
+        height: 22,
+      },
+    }),
+    githubLabel: css({
+      label: 'landingTopBar-githubLabel',
+      fontFamily: theme.typography.fontFamilyMonospace,
+      fontSize: theme.typography.bodySmall.fontSize,
+      lineHeight: theme.typography.bodySmall.lineHeight,
     }),
     productHeading: css({
       label: 'landingTopBar-productHeading',
@@ -1535,9 +1583,7 @@ function getStyles(theme: GrafanaTheme2) {
       fontSize: '2.4rem',
       lineHeight: 1.1,
       whiteSpace: 'nowrap',
-      background: 'linear-gradient(135deg, #5794F2 0%, #B877D9 50%, #FF9830 100%)',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
+      color: theme.colors.text.primary,
     }),
     heroPipeline: css({
       label: 'landingTopBar-heroPipeline',
@@ -1547,6 +1593,10 @@ function getStyles(theme: GrafanaTheme2) {
       marginTop: theme.spacing(1.5),
       flex: 1,
       minHeight: 0,
+      '@container landing-top-bar (max-width: 900px)': {
+        flexDirection: 'column',
+        gap: theme.spacing(1),
+      },
     }),
     pipelineStep: css({
       label: 'landingTopBar-pipelineStep',
@@ -1558,11 +1608,13 @@ function getStyles(theme: GrafanaTheme2) {
       border: `1px solid ${theme.colors.border.weak}`,
       background: theme.isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
       overflow: 'hidden',
-      transition: 'border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease',
+      transition: 'border-color 0.25s ease, box-shadow 0.25s ease',
       '&:hover': {
         borderColor: theme.colors.border.medium,
         boxShadow: theme.isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.08)',
-        transform: 'translateY(-2px)',
+      },
+      '@container landing-top-bar (max-width: 900px)': {
+        flex: 'none',
       },
     }),
     pipelineStepAccent: css({
@@ -1610,6 +1662,9 @@ function getStyles(theme: GrafanaTheme2) {
       width: 48,
       height: 2,
       flexShrink: 0,
+      '@container landing-top-bar (max-width: 900px)': {
+        display: 'none',
+      },
     }),
     pipelineConnectorTrack: css({
       label: 'landingTopBar-pipelineConnectorTrack',
