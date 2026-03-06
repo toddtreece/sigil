@@ -1,6 +1,6 @@
 import React from 'react';
 import type { InstrumentationPromptIde } from '../content/cursorInstrumentationPrompt';
-import { ClaudeCodeLogo, CopilotLogo, CursorLogo } from '../components/landing/IdeLogos';
+import { ClaudeCodeLogo, CopilotLogo, CursorLogo } from '../components/landing/IDELogos';
 
 export type IdeTab = {
   key: InstrumentationPromptIde;
@@ -54,7 +54,7 @@ export function downloadTextFile(filename: string, content: string): void {
 
 export function renderIdeActionLogo(ide: InstrumentationPromptIde): React.ReactNode {
   if (ide === 'cursor') {
-    return <CursorLogo size={20} withBackground={false} />;
+    return <CursorLogo size={20} />;
   }
   if (ide === 'claudecode') {
     return <ClaudeCodeLogo size={20} />;
