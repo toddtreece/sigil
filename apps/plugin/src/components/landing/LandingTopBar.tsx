@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { css, cx, keyframes } from '@emotion/css';
+import { css, cx } from '@emotion/css';
 import { useAssistant } from '@grafana/assistant';
 import type { GrafanaTheme2 } from '@grafana/data';
 import { Button, Card, Icon, IconButton, LinkButton, Stack, Text, Tooltip, useStyles2 } from '@grafana/ui';
@@ -28,6 +28,7 @@ import {
 import { defaultEvaluationDataSource } from '../../evaluation/api';
 import { useFilterUrlState } from '../../hooks/useFilterUrlState';
 import { ideTabs, buildCursorPromptDeeplink, downloadTextFile, renderIdeActionLogo } from '../../ide/ideUtils';
+import { PipelineConnectorSwarm } from './PipelineConnectorSwarm';
 
 type IdeKey = InstrumentationPromptIde;
 
@@ -841,6 +842,13 @@ export function LandingTopBar({
                 </div>
                 <div className={styles.heroPipeline}>
                   <div className={styles.pipelineStep}>
+                    <PipelineConnectorSwarm
+                      color="#5794F2"
+                      mode="section"
+                      className={styles.pipelineStepSwarm}
+                      delaySec={0.1}
+                      seed={101}
+                    />
                     <div
                       className={styles.pipelineStepAccent}
                       style={{ background: 'linear-gradient(90deg, #5794F2 0%, #73B9FF 100%)' }}
@@ -874,14 +882,15 @@ export function LandingTopBar({
                       </Text>
                     </div>
                   </div>
-                  <div className={styles.pipelineConnector} aria-hidden>
-                    <div className={styles.pipelineConnectorTrack} />
-                    <div
-                      className={styles.pipelineConnectorDot}
-                      style={{ background: '#5794F2', boxShadow: '0 0 8px 2px rgba(87,148,242,0.4)' }}
-                    />
-                  </div>
+                  <PipelineConnectorSwarm color="#5794F2" />
                   <div className={styles.pipelineStep}>
+                    <PipelineConnectorSwarm
+                      color="#B877D9"
+                      mode="section"
+                      className={styles.pipelineStepSwarm}
+                      delaySec={0.35}
+                      seed={202}
+                    />
                     <div
                       className={styles.pipelineStepAccent}
                       style={{ background: 'linear-gradient(90deg, #B877D9 0%, #D4A5F5 100%)' }}
@@ -915,14 +924,15 @@ export function LandingTopBar({
                       </Text>
                     </div>
                   </div>
-                  <div className={styles.pipelineConnector} aria-hidden>
-                    <div className={styles.pipelineConnectorTrack} />
-                    <div
-                      className={cx(styles.pipelineConnectorDot, styles.pipelineConnectorDotDelayed)}
-                      style={{ background: '#B877D9', boxShadow: '0 0 8px 2px rgba(184,119,217,0.4)' }}
-                    />
-                  </div>
+                  <PipelineConnectorSwarm color="#B877D9" delayed />
                   <div className={styles.pipelineStep}>
+                    <PipelineConnectorSwarm
+                      color="#FF9830"
+                      mode="section"
+                      className={styles.pipelineStepSwarm}
+                      delaySec={0.65}
+                      seed={303}
+                    />
                     <div
                       className={styles.pipelineStepAccent}
                       style={{ background: 'linear-gradient(90deg, #FF9830 0%, #FFB870 100%)' }}
@@ -1297,13 +1307,6 @@ function normalizeToSpineHeights(values: number[], targetCount: number): number[
   return bucketed.map((v) => MIN_H + ((v - minVal) / (maxVal - minVal)) * (MAX_H - MIN_H));
 }
 
-const connectorTravel = keyframes({
-  '0%': { left: -3, opacity: 0 },
-  '15%': { opacity: 1 },
-  '85%': { opacity: 1 },
-  '100%': { left: 'calc(100% - 3px)', opacity: 0 },
-});
-
 function getStyles(theme: GrafanaTheme2) {
   return {
     compactBar: css({
@@ -1330,6 +1333,8 @@ function getStyles(theme: GrafanaTheme2) {
       gap: theme.spacing(2),
       boxSizing: 'border-box',
       marginTop: theme.spacing(-2),
+      position: 'relative',
+      zIndex: 1,
       '@container landing-top-bar (max-width: 1200px)': {
         gridTemplateColumns: '1fr',
       },
@@ -1338,6 +1343,8 @@ function getStyles(theme: GrafanaTheme2) {
       label: 'landingTopBar-responsiveContainer',
       containerType: 'inline-size',
       containerName: 'landing-top-bar',
+      position: 'relative',
+      isolation: 'isolate',
       width: '100%',
       minWidth: 0,
     }),
@@ -1593,6 +1600,8 @@ function getStyles(theme: GrafanaTheme2) {
       marginTop: theme.spacing(1.5),
       flex: 1,
       minHeight: 0,
+      position: 'relative',
+      isolation: 'isolate',
       '@container landing-top-bar (max-width: 900px)': {
         flexDirection: 'column',
         gap: theme.spacing(1),
@@ -1608,13 +1617,25 @@ function getStyles(theme: GrafanaTheme2) {
       border: `1px solid ${theme.colors.border.weak}`,
       background: theme.isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
       overflow: 'hidden',
+      '& > *': {
+        position: 'relative',
+        zIndex: 1,
+      },
       transition: 'border-color 0.25s ease, box-shadow 0.25s ease',
       '&:hover': {
         borderColor: theme.colors.border.medium,
-        boxShadow: theme.isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.08)',
       },
       '@container landing-top-bar (max-width: 900px)': {
         flex: 'none',
+      },
+    }),
+    pipelineStepSwarm: css({
+      label: 'landingTopBar-pipelineStepSwarm',
+      inset: 0,
+      mixBlendMode: theme.isDark ? 'screen' : 'normal',
+      '&&': {
+        opacity: 0.08,
+        zIndex: 2,
       },
     }),
     pipelineStepAccent: css({
@@ -1652,39 +1673,6 @@ function getStyles(theme: GrafanaTheme2) {
       fontWeight: theme.typography.fontWeightMedium,
       color: theme.colors.text.primary,
       lineHeight: 1.3,
-    }),
-    pipelineConnector: css({
-      label: 'landingTopBar-pipelineConnector',
-      position: 'relative',
-      display: 'flex',
-      alignItems: 'center',
-      alignSelf: 'center',
-      width: 48,
-      height: 2,
-      flexShrink: 0,
-      '@container landing-top-bar (max-width: 900px)': {
-        display: 'none',
-      },
-    }),
-    pipelineConnectorTrack: css({
-      label: 'landingTopBar-pipelineConnectorTrack',
-      position: 'absolute',
-      inset: 0,
-      borderTop: `1px dashed ${theme.isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)'}`,
-    }),
-    pipelineConnectorDot: css({
-      label: 'landingTopBar-pipelineConnectorDot',
-      position: 'absolute',
-      width: 6,
-      height: 6,
-      borderRadius: '50%',
-      top: '50%',
-      transform: 'translateY(-50%)',
-      animation: `${connectorTravel} 2.4s ease-in-out infinite`,
-    }),
-    pipelineConnectorDotDelayed: css({
-      label: 'landingTopBar-pipelineConnectorDotDelayed',
-      animationDelay: '1.2s',
     }),
     assistantRowDash: css({
       label: 'landingTopBar-assistantRowDash',
