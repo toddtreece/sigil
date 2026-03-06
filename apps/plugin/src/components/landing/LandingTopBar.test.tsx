@@ -1,6 +1,8 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import type { DashboardDataSource } from '../../dashboard/api';
+import type { PrometheusQueryResponse } from '../../dashboard/types';
 import { defaultAgentsDataSource } from '../../agents/api';
 import type { AgentListItem } from '../../agents/types';
 import { defaultConversationsDataSource } from '../../conversation/api';
@@ -203,6 +205,117 @@ describe('LandingTopBar hero stats polling', () => {
     expect(secondCurrentTo).toBeGreaterThan(firstCurrentTo);
     expect(secondCurrentFrom - firstCurrentFrom).toBe(70_000);
     expect(secondCurrentTo - firstCurrentTo).toBe(70_000);
+  });
+});
+
+describe('LandingTopBar request spines', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('loads request spine bars from the dashboard datasource', async () => {
+    const queryRange = jest.fn(
+      async (_query: string, _start: number, _end: number, _step: number): Promise<PrometheusQueryResponse> => ({
+        status: 'success' as const,
+        data: {
+          resultType: 'matrix' as const,
+          result: [
+            {
+              metric: {},
+              values: [
+                [1700000000, '1.5'],
+                [1700000060, '2.0'],
+                [1700000120, '3.5'],
+              ] as Array<[number, string]>,
+            },
+          ],
+        },
+      })
+    );
+    const requestsDataSource = {
+      queryRange,
+      queryInstant: jest.fn(),
+      labels: jest.fn(),
+      labelValues: jest.fn(),
+      resolveModelCards: jest.fn(),
+    } satisfies DashboardDataSource;
+
+    await act(async () => {
+      render(
+        <MemoryRouter>
+          <LandingTopBar
+            assistantOrigin="test-origin"
+            requestsDataSource={requestsDataSource}
+            requestsFrom={1_700_000_000}
+            requestsTo={1_700_000_360}
+          />
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => {
+      expect(queryRange).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('keeps last successful spine data when a later refresh fails', async () => {
+    jest.useFakeTimers();
+
+    const successResponse: PrometheusQueryResponse = {
+      status: 'success',
+      data: {
+        resultType: 'matrix',
+        result: [
+          {
+            metric: {},
+            values: [
+              [1700000000, '1.5'],
+              [1700000060, '2.0'],
+              [1700000120, '3.5'],
+            ],
+          },
+        ],
+      },
+    };
+    const queryRange = jest
+      .fn<Promise<PrometheusQueryResponse>, [string, number, number, number]>()
+      .mockResolvedValueOnce(successResponse)
+      .mockRejectedValueOnce(new Error('query failed'));
+
+    const requestsDataSource = {
+      queryRange,
+      queryInstant: jest.fn(),
+      labels: jest.fn(),
+      labelValues: jest.fn(),
+      resolveModelCards: jest.fn(),
+    } satisfies DashboardDataSource;
+
+    const { container } = render(
+      <MemoryRouter>
+        <LandingTopBar
+          assistantOrigin="test-origin"
+          requestsDataSource={requestsDataSource}
+          requestsFrom={1_700_000_000}
+          requestsTo={1_700_000_360}
+        />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(queryRange).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(70_000);
+    });
+
+    await waitFor(() => {
+      expect(queryRange).toHaveBeenCalledTimes(2);
+    });
+
+    const bars = container.querySelectorAll('div[style*="scaleY"]');
+    expect(bars.length).toBeGreaterThan(0);
+    expect(bars[0]).toHaveStyle('transform: scaleY(0.2)');
   });
 });
 
