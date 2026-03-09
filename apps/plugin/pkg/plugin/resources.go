@@ -1169,6 +1169,7 @@ type conversationSearchResult struct {
 	FirstGenerationAt time.Time                  `json:"first_generation_at"`
 	LastGenerationAt  time.Time                  `json:"last_generation_at"`
 	Models            []string                   `json:"models"`
+	ModelProviders    map[string]string          `json:"model_providers,omitempty"`
 	Agents            []string                   `json:"agents"`
 	ErrorCount        int                        `json:"error_count"`
 	HasErrors         bool                       `json:"has_errors"`
@@ -1220,6 +1221,9 @@ const conversationSearchMetadataChunkSize = 100
 const conversationSearchStreamOverfetchMultiplier = searchcore.DefaultTempoOverfetchMultiplier * 2
 const conversationSearchInputTokensSelectKey = "span.gen_ai.usage.input_tokens"
 const conversationSearchOutputTokensSelectKey = "span.gen_ai.usage.output_tokens"
+const conversationSearchCacheReadTokensSelectKey = "span.gen_ai.usage.cache_read_input_tokens"
+const conversationSearchCacheWriteTokensSelectKey = "span.gen_ai.usage.cache_write_input_tokens"
+const conversationSearchReasoningTokensSelectKey = "span.gen_ai.usage.reasoning_tokens"
 const maxStatsSearchPages = 1000
 
 type conversationBatchMetadataRequest struct {
@@ -1229,9 +1233,21 @@ type conversationBatchMetadataRequest struct {
 type conversationBatchMetadata struct {
 	ConversationID    string                     `json:"conversation_id"`
 	ConversationTitle string                     `json:"conversation_title,omitempty"`
+	UserID            string                     `json:"user_id,omitempty"`
 	GenerationCount   int                        `json:"generation_count"`
 	FirstGenerationAt time.Time                  `json:"first_generation_at"`
 	LastGenerationAt  time.Time                  `json:"last_generation_at"`
+	Models            []string                   `json:"models"`
+	ModelProviders    map[string]string          `json:"model_providers,omitempty"`
+	Agents            []string                   `json:"agents"`
+	ErrorCount        int                        `json:"error_count"`
+	HasErrors         bool                       `json:"has_errors"`
+	InputTokens       int64                      `json:"input_tokens"`
+	OutputTokens      int64                      `json:"output_tokens"`
+	CacheReadTokens   int64                      `json:"cache_read_tokens"`
+	CacheWriteTokens  int64                      `json:"cache_write_tokens"`
+	ReasoningTokens   int64                      `json:"reasoning_tokens"`
+	TotalTokens       int64                      `json:"total_tokens"`
 	RatingSummary     *conversationRatingSummary `json:"rating_summary,omitempty"`
 	AnnotationCount   int                        `json:"annotation_count"`
 	EvalSummary       *conversationEvalSummary   `json:"eval_summary,omitempty"`
@@ -1272,26 +1288,38 @@ func (a *App) handleSearchConversations(w http.ResponseWriter, req *http.Request
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !a.hasGrafanaDatasourceProxyTarget(a.tempoDatasourceUID) {
-		http.Error(w, "grafana tempo datasource proxy is not configured", http.StatusServiceUnavailable)
+	if handled, err := a.tryProxySearchRequest(w, req, "/api/v1/conversations/search"); handled {
+		if err != nil {
+			a.writeSearchError(w, "/query/conversations/search", err)
+		}
 		return
 	}
 
-	var payload conversationSearchRequest
-	if req.Body != nil {
-		decoder := json.NewDecoder(req.Body)
-		if err := decoder.Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
-			return
-		}
+	payload, err := decodeConversationSearchRequest(req)
+	if err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
 	}
-
-	response, err := a.searchConversations(req, payload)
+	needsTempo, err := conversationSearchNeedsTempo(payload)
 	if err != nil {
 		a.writeSearchError(w, "/query/conversations/search", err)
 		return
 	}
-	writeJSONResponse(w, http.StatusOK, response)
+	if needsTempo && !a.hasGrafanaDatasourceProxyTarget(a.tempoDatasourceUID) {
+		http.Error(w, "grafana tempo datasource proxy is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	state, err := a.runConversationSearch(req, payload, nil)
+	if err != nil {
+		a.writeSearchError(w, "/query/conversations/search", err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, conversationSearchResponse{
+		Conversations: state.Results,
+		NextCursor:    state.NextCursor,
+		HasMore:       state.HasMore,
+	})
 }
 
 func (a *App) handleSearchConversationsStream(w http.ResponseWriter, req *http.Request) {
@@ -1299,8 +1327,10 @@ func (a *App) handleSearchConversationsStream(w http.ResponseWriter, req *http.R
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !a.hasGrafanaDatasourceProxyTarget(a.tempoDatasourceUID) {
-		http.Error(w, "grafana tempo datasource proxy is not configured", http.StatusServiceUnavailable)
+	if handled, err := a.tryProxyStreamingSearchRequest(w, req, "/api/v1/conversations/search/stream"); handled {
+		if err != nil {
+			a.writeSearchError(w, "/query/conversations/search/stream", err)
+		}
 		return
 	}
 
@@ -1313,6 +1343,15 @@ func (a *App) handleSearchConversationsStream(w http.ResponseWriter, req *http.R
 	payload, err := decodeConversationSearchRequest(req)
 	if err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	needsTempo, err := conversationSearchNeedsTempo(payload)
+	if err != nil {
+		a.writeSearchError(w, "/query/conversations/search/stream", err)
+		return
+	}
+	if needsTempo && !a.hasGrafanaDatasourceProxyTarget(a.tempoDatasourceUID) {
+		http.Error(w, "grafana tempo datasource proxy is not configured", http.StatusServiceUnavailable)
 		return
 	}
 	started := false
@@ -1363,14 +1402,25 @@ func (a *App) handleConversationStats(w http.ResponseWriter, req *http.Request) 
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !a.hasGrafanaDatasourceProxyTarget(a.tempoDatasourceUID) {
-		http.Error(w, "grafana tempo datasource proxy is not configured", http.StatusServiceUnavailable)
+	if handled, err := a.tryProxySearchRequest(w, req, "/api/v1/conversations/stats"); handled {
+		if err != nil {
+			a.writeSearchError(w, "/query/conversations/stats", err)
+		}
 		return
 	}
 
 	payload, err := decodeConversationSearchRequest(req)
 	if err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	needsTempo, err := conversationSearchNeedsTempo(payload)
+	if err != nil {
+		a.writeSearchError(w, "/query/conversations/stats", err)
+		return
+	}
+	if needsTempo && !a.hasGrafanaDatasourceProxyTarget(a.tempoDatasourceUID) {
+		http.Error(w, "grafana tempo datasource proxy is not configured", http.StatusServiceUnavailable)
 		return
 	}
 	stats, err := a.searchConversationStats(req, payload)
@@ -1481,6 +1531,13 @@ func (a *App) handleSearchTagValues(w http.ResponseWriter, req *http.Request) {
 }
 
 func (a *App) searchConversations(req *http.Request, payload conversationSearchRequest) (conversationSearchResponse, error) {
+	var response conversationSearchResponse
+	if err := a.doSigilJSONRequest(req, http.MethodPost, "/api/v1/conversations/search", nil, payload, &response); err == nil {
+		return response, nil
+	} else if !canFallbackProjectionSearchError(err) {
+		return conversationSearchResponse{}, err
+	}
+
 	state, err := a.runConversationSearch(req, payload, nil)
 	if err != nil {
 		return conversationSearchResponse{}, err
@@ -1497,28 +1554,41 @@ func (a *App) searchConversationStats(req *http.Request, payload conversationSea
 	if err != nil {
 		return conversationStatsResponse{}, err
 	}
+	parsedFilters, err := searchcore.ParseFilterExpression(payload.Filters)
+	if err != nil {
+		return conversationStatsResponse{}, newSearchValidationError(err.Error())
+	}
+	if err := searchcore.ValidateMySQLFilterTerms(parsedFilters.MySQLTerms); err != nil {
+		return conversationStatsResponse{}, newSearchValidationError(err.Error())
+	}
 
 	stats := conversationStatsResponse{}
 	totalCalls := 0
 	badRatedConversations := 0
 	request := payload
-	request.Select = []string{conversationSearchInputTokensSelectKey, conversationSearchOutputTokensSelectKey}
+	request.Select = []string{
+		conversationSearchInputTokensSelectKey,
+		conversationSearchOutputTokensSelectKey,
+		conversationSearchCacheReadTokensSelectKey,
+		conversationSearchCacheWriteTokensSelectKey,
+		conversationSearchReasoningTokensSelectKey,
+	}
 	request.PageSize = searchcore.MaxConversationSearchPageSize
 	request.Cursor = ""
 	pageIndex := 0
 
 	for {
-		response, err := a.searchConversations(req, request)
+		state, err := a.runConversationSearch(req, request, nil)
 		if err != nil {
 			return conversationStatsResponse{}, err
 		}
-		pageCalls, pageBadRated := accumulateConversationStats(&stats, response.Conversations, to)
+		pageCalls, pageBadRated := accumulateConversationStats(&stats, state.Results, to)
 		totalCalls += pageCalls
 		badRatedConversations += pageBadRated
-		if !response.HasMore || strings.TrimSpace(response.NextCursor) == "" {
+		if !state.HasMore || strings.TrimSpace(state.NextCursor) == "" {
 			break
 		}
-		request.Cursor = response.NextCursor
+		request.Cursor = state.NextCursor
 		pageIndex++
 		if pageIndex >= maxStatsSearchPages {
 			break
@@ -1551,6 +1621,9 @@ func accumulateConversationStats(
 		totalCalls += conversation.GenerationCount
 		stats.TotalTokens += conversationSelectedNumber(conversation.Selected, conversationSearchInputTokensSelectKey)
 		stats.TotalTokens += conversationSelectedNumber(conversation.Selected, conversationSearchOutputTokensSelectKey)
+		stats.TotalTokens += conversationSelectedNumber(conversation.Selected, conversationSearchCacheReadTokensSelectKey)
+		stats.TotalTokens += conversationSelectedNumber(conversation.Selected, conversationSearchCacheWriteTokensSelectKey)
+		stats.TotalTokens += conversationSelectedNumber(conversation.Selected, conversationSearchReasoningTokensSelectKey)
 
 		lastActivity := conversation.LastGenerationAt.UTC()
 		if !lastActivity.IsZero() {
@@ -1801,6 +1874,33 @@ func (a *App) runConversationSearch(
 	}, nil
 }
 
+func conversationSearchNeedsTempo(payload conversationSearchRequest) (bool, error) {
+	parsedFilters, err := searchcore.ParseFilterExpression(payload.Filters)
+	if err != nil {
+		return false, newSearchValidationError(err.Error())
+	}
+	if err := searchcore.ValidateMySQLFilterTerms(parsedFilters.MySQLTerms); err != nil {
+		return false, newSearchValidationError(err.Error())
+	}
+	if _, err := searchcore.NormalizeSelectFields(payload.Select); err != nil {
+		return false, newSearchValidationError(err.Error())
+	}
+	return true, nil
+}
+
+func canFallbackProjectionSearchError(err error) bool {
+	upstreamErr := (*upstreamHTTPError)(nil)
+	if !errors.As(err, &upstreamErr) {
+		return false
+	}
+	switch upstreamErr.StatusCode {
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		return true
+	default:
+		return false
+	}
+}
+
 func decodeConversationSearchRequest(req *http.Request) (conversationSearchRequest, error) {
 	var payload conversationSearchRequest
 	if req.Body == nil {
@@ -1949,6 +2049,111 @@ func (a *App) doSigilJSONRequest(
 		return fmt.Errorf("decode sigil response: %w", err)
 	}
 	return nil
+}
+
+func (a *App) tryProxySearchRequest(w http.ResponseWriter, req *http.Request, path string) (bool, error) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return true, fmt.Errorf("read request body: %w", err)
+	}
+	req.Body = io.NopCloser(bytes.NewReader(body))
+
+	responseBody, err := a.doSigilRequest(req, req.Method, path, nil, body)
+	if err != nil {
+		if canFallbackProjectionSearchError(err) {
+			req.Body = io.NopCloser(bytes.NewReader(body))
+			return false, nil
+		}
+		return true, err
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(responseBody)
+	return true, nil
+}
+
+func (a *App) tryProxyStreamingSearchRequest(w http.ResponseWriter, req *http.Request, path string) (bool, error) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return true, fmt.Errorf("read request body: %w", err)
+	}
+	req.Body = io.NopCloser(bytes.NewReader(body))
+
+	ctx, span := pluginProxyTracer.Start(
+		req.Context(),
+		"sigil.plugin.proxy.sigil.stream",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("http.request.method", req.Method),
+			attribute.String("url.path", path),
+		),
+	)
+	defer span.End()
+
+	upstream := strings.TrimRight(a.apiURL, "/") + path
+	proxyReq, err := http.NewRequestWithContext(ctx, req.Method, upstream, bytes.NewReader(body))
+	if err != nil {
+		return true, fmt.Errorf("build request: %w", err)
+	}
+	proxyReq.Header = req.Header.Clone()
+	proxyReq.Header.Set("Content-Type", "application/json")
+	if a.apiAuthToken != "" {
+		proxyReq.SetBasicAuth(a.tenantID, a.apiAuthToken)
+	}
+	injectTenantHeaders(proxyReq, a.tenantID)
+	injectOperatorIdentityHeaders(proxyReq, req.Method, path)
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(proxyReq.Header))
+
+	resp, err := a.client.Do(proxyReq)
+	if err != nil {
+		return true, err
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode >= http.StatusBadRequest {
+		payload, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return true, readErr
+		}
+		err = &upstreamHTTPError{StatusCode: resp.StatusCode, Body: payload}
+		if canFallbackProjectionSearchError(err) {
+			req.Body = io.NopCloser(bytes.NewReader(body))
+			return false, nil
+		}
+		return true, err
+	}
+
+	copyUpstreamResponseHeaders(w.Header(), resp.Header)
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+	}
+	w.WriteHeader(resp.StatusCode)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		_, copyErr := io.Copy(w, resp.Body)
+		return true, copyErr
+	}
+
+	buffer := make([]byte, 32*1024)
+	for {
+		n, readErr := resp.Body.Read(buffer)
+		if n > 0 {
+			if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
+				return true, writeErr
+			}
+			flusher.Flush()
+		}
+		if readErr == nil {
+			continue
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		return true, readErr
+	}
+	return true, nil
 }
 
 func (a *App) doGrafanaJSONRequest(
