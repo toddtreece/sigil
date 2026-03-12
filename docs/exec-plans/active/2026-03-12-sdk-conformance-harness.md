@@ -39,15 +39,15 @@ The repo currently ships the Go core conformance harness entry point:
 
 - Local task: `mise run test:sdk:conformance`
 - Direct runner: `cd sdks/go && GOWORK=off go test ./sigil -run '^TestConformance' -count=1`
-- Current covered scenarios: conversation title semantics, user ID semantics, agent identity semantics, streaming mode semantics, tool execution semantics, embedding semantics, validation/error semantics, rating submission semantics, shutdown flush semantics
+- Current covered scenarios: full generation roundtrip, conversation title semantics, user ID semantics, agent identity semantics, streaming mode semantics, tool execution semantics, embedding semantics, validation/error semantics, rating submission semantics, shutdown flush semantics
 - Current assertion targets in active use: generation export proto, OTLP spans, OTLP metrics
 
 ### SDK fixes discovered during implementation
 
 (Updated as issues are found.)
 
-- [x] Added `cache_creation_input_tokens` to the generation ingest protobuf contract and regenerated the Go SDK/server bindings so full usage roundtrip coverage can assert all six token counters.
-- [x] Synced the checked-in JS proto copy and regenerated the Go protobuf bindings so `ToolDefinition.deferred` is present in the conformance ingest schema used by the Go SDK harness.
+- Added `cache_creation_input_tokens` to the generation ingest proto and Go SDK proto mapping so the full roundtrip export preserves the complete token usage payload.
+- Synced the checked-in JS proto copy and regenerated the Go protobuf bindings so `ToolDefinition.deferred` is present in the conformance ingest schema used by the Go SDK harness.
 
 ## Phase A: Go core SDK
 
